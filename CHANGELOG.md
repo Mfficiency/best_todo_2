@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.123] - 2026-10-27
+- Voice inbox: Waiting for Approval now sorts items into Todo, Migros, Lemmon, Backlog, Research, Groceries and Other (pick another view under Group by). Each group swipes to its own destinations: a day for Todo/Migros/Lemmon, Active / Next / Someday for Backlog and Research, Add to list for Groceries; swiping an Other item asks where it belongs. Claude's suggested destination shows as → Tomorrow and is what the countdown picks. Long-press an item and drag it onto another group to fix its category; multi-select is now the Select button at the top. Food from a voice note goes straight into the Food Diary, with a blue dot when it needs a check (editing the entry clears it). Items Claude linked to an Obsidian page get an Open in Obsidian button.
+- Home: the menu's Home row has an arrow that folds out Todo, MLR and Lemmon switches, so the home list can show regular items, MLR items, Lemmon items or any mix. It starts as before (regular items only) and remembers your choice.
+- New tools: Lemmon (like Worklist, for items tagged lemmon) and Groceries, a reusable shopping checklist grouped by category (fruit & vegetables, dairy, pasta & rice, ...) with Check all and Reset list at the top. Categories can be renamed, reordered and added under Edit categories; something already on the list is unchecked instead of added twice, and an item lands in the category it had last time.
+- Wishlist sections are now called Active (was Next release), Next (was Soon), Someday (was Backlog) and Done (was Newly implemented). Research is grouped the same way, with a Move to button on each item; research items no longer show their due date.
+
 ## [0.2.122] - 2026-10-25
 - Watch: BestToDo Watch's app icon is now the BestToDo logo (black on a white circle), so it is easy to spot in the watch's app list instead of a plain blue check mark
 - Notifications show the BestToDo logo in the status bar and on the watch instead of a blank square

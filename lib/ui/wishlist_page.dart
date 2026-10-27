@@ -25,6 +25,7 @@ import '../utils/description_disclosure.dart';
 import '../utils/label_utils.dart';
 import '../utils/wish_priority.dart';
 import 'label_picker.dart';
+import 'obsidian_link_button.dart';
 import 'subpage_app_bar.dart';
 import 'wishlist_sync_banner.dart';
 
@@ -105,17 +106,22 @@ void regressWishReleaseGroup(Task task, String currentVersion) {
 /// undo action.
 const Duration wishlistSweepDelay = Duration(seconds: 8);
 
-/// Section title shown above a group's items.
+/// Section title shown above a group's items. Since the voice inbox the
+/// four groups use the same words as Backlog/Research everywhere else (and
+/// as the vault's project `Status`: Doing / Soon / Someday / Done): "Next
+/// release" — what's being built now — is **Active**, "Soon" is **Next**,
+/// "Backlog" is **Someday**, "Newly implemented" is **Done**. Only the titles
+/// changed; membership still follows the same release tokens.
 String wishReleaseGroupTitle(WishReleaseGroup group) {
   switch (group) {
     case WishReleaseGroup.newlyImplemented:
-      return 'Newly implemented';
+      return 'Done';
     case WishReleaseGroup.nextRelease:
-      return 'Next release';
+      return 'Active';
     case WishReleaseGroup.soon:
-      return 'Soon';
+      return 'Next';
     case WishReleaseGroup.backlog:
-      return 'Backlog';
+      return 'Someday';
   }
 }
 
@@ -1330,7 +1336,9 @@ class _WishTileState extends State<_WishTile>
           decoration: widget.item.isDone ? TextDecoration.lineThrough : null,
         ),
       ),
-      subtitle: widget.item.description.isEmpty && labels.isEmpty
+      subtitle: widget.item.description.isEmpty &&
+              labels.isEmpty &&
+              widget.item.obsidianLink == null
           ? null
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1355,6 +1363,8 @@ class _WishTileState extends State<_WishTile>
                   const SizedBox(height: 4),
                   DescriptionDisclosure(description: widget.item.description),
                 ],
+                if (widget.item.obsidianLink != null)
+                  ObsidianLinkButton(link: widget.item.obsidianLink!),
               ],
             ),
       // Tapping folds the tile open for inline editing, exactly like a home

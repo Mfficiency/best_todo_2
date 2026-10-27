@@ -207,17 +207,22 @@ file is the short operational guide.
 - Don't introduce new deprecation warnings; existing `withOpacity`/
   `onWillAccept` infos are legacy and get cleaned opportunistically.
 - Changelog entries are user-facing bullet points under `## [x.y.z] - date`.
-- **Standing rule — MLR tag is Worklist-exclusive**: any task tagged/labeled
-  `mlr` shows *only* inside the Worklist tool, never in the regular home
-  tabs, schedule view, Wishlist, Projects/board, or the Markdown export —
-  the user has asked for this once and it does not need to be requested
-  again. Enforced structurally in `ItemViews.isVisibleInMainViews`
-  (`lib/services/item_views.dart`), the same gate Food Diary/Research use,
-  via `worklistToken`/`hasWorklistToken` in `lib/utils/label_utils.dart`.
-  When touching task-visibility filtering (home tabs, schedule view,
-  wishlist, projects, the home-screen widget), preserve this gate rather
+- **Standing rule — MLR (and Lemmon) items stay out of the main views**:
+  any task tagged/labeled `mlr` shows inside the Worklist tool and, only when
+  the drawer's Home row has its **MLR** toggle switched on (default off), in
+  the regular home tabs and schedule view — never in the Wishlist,
+  Projects/board, the home-screen widget, Wear or the Markdown export. The
+  `lemmon` tag works the same way (Tools ▸ Lemmon, **Lemmon** toggle). The
+  owner asked for the MLR rule once and for the toggles in 0.2.123; neither
+  needs to be requested again. Enforced structurally in
+  `ItemViews.isVisibleInMainViews` (`lib/services/item_views.dart`), the same
+  gate Food Diary/Research/Groceries use, via `worklistToken`/`lemmonToken`
+  in `lib/utils/label_utils.dart`; the toggles (`HomeContexts`,
+  `Config.homeContexts`) are a parameter of `ItemViews.isOnHomeScreen`, not a
+  second filter. When touching task-visibility filtering (home tabs, schedule
+  view, wishlist, projects, the home-screen widget), preserve this gate rather
   than reintroducing a path that reads `_tasks`/the task list unfiltered.
   Both home bodies must go through `ItemViews.isOnHomeScreen` — the tabs via
   `homeBucket`, the schedule view via `homeVisible` — so the Home filter
-  rules and the demo gate can never apply to one and not the other (that
-  leak was 0.2.46's bug).
+  rules, the context toggles and the demo gate can never apply to one and not
+  the other (that leak was 0.2.46's bug).

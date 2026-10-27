@@ -1,4 +1,5 @@
 import '../config.dart';
+import '../models/home_contexts.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
 import '../utils/date_utils.dart';
@@ -39,18 +40,27 @@ class ItemViews {
   /// wishlist, projects, the home-screen widget, Todoist sync — as opposed
   /// to being gated into exactly one dedicated tool. Combines the Todoist
   /// approval gate with the Food Diary gate ([Task.isEatingHabit]), the
-  /// Research gate ([Task.isResearch]) and the Worklist gate
-  /// ([hasWorklistToken]): a food diary entry, research item, or task tagged
-  /// `mlr` is visible only in its own tool and, once deleted there, the
-  /// deleted/archived lists. [includeWorklistItems] lifts the Worklist gate
-  /// for the one caller that is that dedicated tool — the Worklist instance
-  /// of the home page itself (see [homeBucket]).
+  /// Research gate ([Task.isResearch]), the Groceries gate
+  /// ([Task.isGrocery]) and the two work-context gates ([hasWorklistToken],
+  /// [hasLemmonToken]): a food diary entry, research item, grocery item, or
+  /// task tagged `mlr`/`lemmon` is visible only in its own tool and, once
+  /// deleted there, the deleted/archived lists. [includeWorklistItems] lifts
+  /// the work-context gates for the callers that are those dedicated tools —
+  /// the Worklist/Lemmon instances of the home page itself, which narrow to
+  /// their own tag with a `where` predicate (see [homeBucket]);
+  /// [includeLemmonItems] lifts only the Lemmon gate (the home page's Lemmon
+  /// toggle, see [HomeContexts]).
   static bool isVisibleInMainViews(Task task,
-          {bool includeWorklistItems = false}) =>
+          {bool includeWorklistItems = false,
+          bool includeLemmonItems = false}) =>
       isApproved(task) &&
       !task.isEatingHabit &&
       !task.isResearch &&
-      (includeWorklistItems || !hasWorklistToken(task.label));
+      !task.isGrocery &&
+      (includeWorklistItems || !hasWorklistToken(task.label)) &&
+      (includeWorklistItems ||
+          includeLemmonItems ||
+          !hasLemmonToken(task.label));
 
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
@@ -97,6 +107,7 @@ class ItemViews {
     if (isDemoSeedDescription(task.description)) tags.add(demoToken);
     if (task.isEatingHabit) tags.add(fooddiaryToken);
     if (task.isResearch) tags.add(researchToken);
+    if (task.isGrocery) tags.add(groceriesToken);
     if (task.projectId != null) tags.add(projectToken);
     if (!isApproved(task)) tags.add(waitingApprovalToken);
     if (archived) tags.add(archivedToken);
@@ -200,15 +211,29 @@ class ItemViews {
   /// [homeVisible] — so a filter rule can never apply to one and not the
   /// other (0.2.46: the schedule view used to skip [rules] entirely, which
   /// leaked demo/wish/project items onto a phone that starts in that view).
+  ///
+  /// [contexts] are the regular home page's Todo/MLR/Lemmon toggles: they
+  /// lift the matching work-context gate *and* narrow to the chosen
+  /// contexts, inside this same gate rather than as a second filter. Null
+  /// (the tool instances, and every non-home caller) means "no toggles".
   static bool isOnHomeScreen(
     Task task, {
     bool Function(Task task)? where,
     ViewFilterRules? rules,
     bool includeWorklistItems = false,
-  }) =>
-      isVisibleInMainViews(task, includeWorklistItems: includeWorklistItems) &&
-      (where == null || where(task)) &&
-      passesFilterRules(task, rules);
+    HomeContexts? contexts,
+  }) {
+    // With toggles, they alone decide context membership (the default
+    // toggles — Todo only — hide every MLR/Lemmon item, exactly like the
+    // plain gate below); the rest of the structural gate still applies.
+    final visible = contexts != null
+        ? contexts.allows(task.label) &&
+            isVisibleInMainViews(task, includeWorklistItems: true)
+        : isVisibleInMainViews(task,
+            includeWorklistItems: includeWorklistItems);
+    return visible && (where == null || where(task)) &&
+        passesFilterRules(task, rules);
+  }
 
   /// Every task the home screen may show, unbucketed and in list order —
   /// what the schedule view renders as one long day-grouped list. Same gate
@@ -218,12 +243,14 @@ class ItemViews {
     bool Function(Task task)? where,
     ViewFilterRules? rules,
     bool includeWorklistItems = false,
+    HomeContexts? contexts,
   }) =>
       tasks
           .where((t) => isOnHomeScreen(t,
               where: where,
               rules: rules,
-              includeWorklistItems: includeWorklistItems))
+              includeWorklistItems: includeWorklistItems,
+              contexts: contexts))
           .toList();
 
   /// The tasks of home tab [tabIndex], sorted like the home list (open
@@ -239,13 +266,15 @@ class ItemViews {
     bool Function(Task task)? where,
     ViewFilterRules? rules,
     bool includeWorklistItems = false,
+    HomeContexts? contexts,
   }) {
     final list = tasks
         .where((t) =>
             isOnHomeScreen(t,
                 where: where,
                 rules: rules,
-                includeWorklistItems: includeWorklistItems) &&
+                includeWorklistItems: includeWorklistItems,
+                contexts: contexts) &&
             inHomeBucket(t, tabIndex, today))
         .toList();
     sortTasks(list);
@@ -281,6 +310,17 @@ class ItemViews {
       tasks
           .where((t) =>
               t.isResearch && isApproved(t) && passesFilterRules(t, rules))
+          .toList();
+
+  /// The Groceries tool: grocery-flagged tasks, gated like the Research
+  /// tool ([isApproved] only, since [isVisibleInMainViews] excludes them).
+  static List<Task> groceries(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.isGrocery &&
+              t.deletedAt == null &&
+              isApproved(t) &&
+              passesFilterRules(t, rules))
           .toList();
 
   /// All non-deleted tasks (the Projects page's top pane).

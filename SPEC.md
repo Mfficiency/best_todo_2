@@ -600,6 +600,123 @@ other view's default Hide list the same way `fooddiaryToken` is — bumped
 `_currentViewFilterRulesSeedVersion` to 3 so existing installs re-sync their Filtering
 rules defaults to include it.
 
+### 4.2j Voice inbox — categories in Waiting for Approval (0.2.123)
+
+Design record and the parts still to build: `docs/proposals/voice-inbox.md`;
+the routine's prompt: `docs/proposals/voice-inbox-routine.md`. A Pocket
+recording is split and sorted by an out-of-repo Claude Routine into Todoist
+tasks whose description carries one-line **markers**; the ordinary Todoist pull
+(§4.8) brings them into Waiting for Approval, which is now sectioned by the
+marker's category.
+
+**The marker contract** (`lib/utils/voice_inbox.dart`, `parseVoiceMarkers`, pure
+and unit-tested). Lines of the form `[Key: value]`: any number at the very start
+of the description (the original `[Source:]` same-line form keeps working), or a
+marker alone on its own line anywhere *above the app's metadata trailer*
+(`TodoistMetadataCodec` — the trailer is never read for markers, and a change
+below it doesn't even change the remote fingerprint, so a routine must put new
+markers at the top). Keys (case-insensitive; blank value = absent; first one
+wins): `Source` → `Task.pendingSourceTitle`; `Group` → `Task.approvalGroup`
+(`ApprovalGroups.normalize`: todo, migros (aliases mlr/worklist), lemmon,
+backlog (wishlist/wish), research, groceries (grocery/shopping), food (food
+diary), anything else → other); `Suggest` → `Task.approvalSuggestion` (a day key
+`today|tomorrow|dayafter|nextweek|nextmonth|future` — `suggestedTabIndex` — or a
+state `active|next|someday`, `archive` = someday — `suggestedState`; for food,
+`verify`/`new`); `Project` → `Task.obsidianProject`; `GroceryCategory` →
+`Task.groceryCategory`; `Transcript` → `Task.transcriptPath`; `Obsidian` →
+`Task.obsidianLink`. All are stripped from the visible description, stored
+locally (like `pendingSourceTitle`: never pushed back, no effect on fingerprints).
+
+`TodoistSyncService`: `_taskFromRemote` parses all markers (`_applySortingMarkers`);
+`_applyRemoteToLocal` (a later remote edit) strips them too, always takes an
+`[Obsidian:]` link (the routine adds it after approval), and re-reads the
+sorting markers **only while the task still carries the approval gate** — so a
+task typed straight into Todoist, which lands in Other, moves into its category
+once the routine sorts it. It also keeps such a pending task pending (the remote
+label array used to replace the local labels wholesale, silently dropping the
+gate). **Food skips approval**: a `[Group: food]` task becomes a Food Diary entry
+at once (`_turnIntoFoodEntry`: gate removed, `isEatingHabit`, timed at its
+Todoist due datetime — the recording time — else its creation time,
+`needsVerification` when `Suggest` is `verify`/`new`). Food Diary and grocery
+items are excluded from `syncable`, so step 1 of the next run deletes the
+Todoist copy (pulled exactly once).
+
+**Waiting for Approval** (`lib/ui/waiting_approval_page.dart`):
+- The app bar's **Group by** menu: *By category* (default, not persisted), *By
+  conversation* (the previous grouping, `_groupKeyFor`), *One list*. Category
+  sections follow `ApprovalGroups.all` (Todo, Migros, Lemmon, Backlog, Research,
+  Groceries, Food diary, Other); empty ones are hidden — except while dragging.
+- The row shows the suggestion as "→ Tomorrow" / "→ Next" (`_suggestionLabel`).
+- Swipe options per group (`_PendingTaskTileState._optionButtons`): Todo/Migros/
+  Lemmon — the day buckets (suggested one bold), deny side Deny +
+  Fri/Sat/Sun/Mon; Backlog/Research — Active/Next/Someday, deny side Deny only;
+  Groceries — "Add to list"; Food diary — "Add to diary"; **Other** — the approve
+  swipe opens the category picker (`_pickGroup`, `SimpleDialog` "Move "…" to"),
+  the item stays pending in the new group. The countdown applies the
+  suggestion, else Today / Next / Add.
+- Approving (`_liftGate` first): Migros adds `worklistToken`, Lemmon
+  `lemmonToken`; Backlog sets `isWish`, Research `isResearch`, both
+  `setBacklogState`; Groceries `GroceryList.add` (an item with the same name
+  already on the list is unchecked instead, the pending one dropped); Food sets
+  `isEatingHabit`. The plain Approve button = "approve as suggested" (a dated
+  item without a suggestion keeps its date untouched, as before); Approve
+  selected runs each item's own approve path with one save (`_batching`).
+- **Long press on a row** (category view) is a `LongPressDraggable<String>`
+  (uid); each section is a `DragTarget` — dropping moves the item there
+  (`_moveToGroup`, suggestion reset). A `_PendingDragNotification` makes the
+  empty pickable sections appear as "Groceries (0)" targets during a drag. In
+  the other views a long press opens the picker; the details panel also has
+  "Move to category". **Multi-select moved to the app bar's Select button**
+  (`_selectionMode`; "0 selected" until something is tapped); long-pressing a
+  group header still selects the group.
+- The details panel adds `Project:`, `Category:` (groceries) and `Transcript:`.
+
+**Backlog/Research states** are the existing release tokens (`backlogStateOf`/
+`setBacklogState`): `release-next` = Active, `release-soon` = Next, none =
+Someday. The Wishlist's four release groups keep their mechanics but are titled
+**Active** (was Next release), **Next** (Soon), **Someday** (Backlog), **Done**
+(Newly implemented) — `wishReleaseGroupTitle`. The **Research** tool sections
+its items Active / Next / Someday / Done (checked off), each card with a "Move
+to" menu; `TaskTile` no longer shows a research item's due date (kept in the
+data) nor its release token chip.
+
+**`[Obsidian:]` links** show as an "Open in Obsidian" button
+(`lib/ui/obsidian_link_button.dart`, `url_launcher`) on `TaskTile` and the
+Wishlist tile.
+
+**Food Diary "please verify" dot**: an entry with `Task.needsVerification`
+shows a small blue dot (`Key('food-verify-dot')`) before its title; saving the
+edit dialog clears it.
+
+**Home work-context toggles** (`lib/models/home_contexts.dart`,
+`Config.homeContexts`, persisted in `settings.json` as `homeContexts`): the
+drawer's Home row has an arrow ("Show home filters") folding out **Todo / MLR /
+Lemmon** `FilterChip`s (only on the regular home page). Defaults todo-only — the
+home list then looks exactly as before. "Todo" = items with neither `mlr` nor
+`lemmon`. They live *inside* the one home gate: `ItemViews.isOnHomeScreen`/
+`homeBucket`/`homeVisible` take `contexts:` — with toggles, `contexts.allows(label)`
+alone decides context membership and the rest of `isVisibleInMainViews` still
+applies. Only the in-app home tabs and schedule view pass them (the widget,
+Wear and sync files never do); the `applySearch: false` full-tab callers that
+renumber `listRanking` see all three contexts, so a narrowed list never drives
+the renumbering. `lemmonToken` (`'lemmon'`) is gated exactly like `mlr`
+(`isVisibleInMainViews(includeLemmonItems:)`; `includeWorklistItems` lifts both,
+for the tool instances). **Tools ▸ Lemmon** is `HomePage(tagFilter: lemmonToken,
+toolTitle: 'Lemmon')`, amber accent instead of Worklist's orange.
+
+**Tools ▸ Groceries** (`lib/ui/groceries_page.dart`): `Task.isGrocery` +
+`Task.groceryCategory`, gated out of every main view (`isVisibleInMainViews`,
+`ItemViews.groceries`, synthetic state tag `Groceries`, not synced). A reusable
+checklist: sections in `GroceryCategoryService` order (`grocery_categories.json`,
+editable on the page's "Edit categories" → `GroceryCategoriesPage`: reorder,
+rename, delete, add; "Other" always exists and comes last, catching unknown or
+deleted categories — `resolve`). Unchecked first, then by name; header "Name
+(open/total)". **Check all** / **Reset list** at the top; checked items are
+never swept at day rollover (`StorageService.loadTaskList` and
+`HomePage._changeDate` skip `isGrocery`); swipe removes (to Archived Items, with
+undo). The add dialog's category defaults to "Automatic" = the category that
+item had last time (`GroceryList.rememberedCategory`), else Other.
+
 ### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
 
 What used to be the single "Deleted Items" list is now **Archived Items**
@@ -910,12 +1027,12 @@ spanning the top is always attached.
 
 **Drawer (reordered 0.2.33):** Home, Settings, Waiting for Approval, Food Diary, Tools ▸
 (Alarms, Weekly Hours Planner, Projects, Wishlist, Research, Chronize, Countdown,
-Productivity Stats, Usage Data, Fitness Activity, Test Results, Worklist, MP3
-Downloader — most-used first), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
+Productivity Stats, Usage Data, Fitness Activity, Test Results, Worklist, Lemmon,
+Groceries, MP3 Downloader — most-used first), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
 Startup Times, Widget Previews (dev build only). Food Diary is a standalone entry (own
 `ListTile`, gated on `Config.isFeatureEnabled('food_diary')`) rather than a `_toolEntries`
 member, so it always sits above Tools instead of inside it.
-**Home** (0.1.233) is `_goHome()`: pop every page stacked on
+**Home** (0.1.233; toggles arrow 0.2.123 — see §4.2j) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
 (`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
 schedule-view feature is on) — so it always lands on the same familiar screen rather than

@@ -184,7 +184,8 @@ void main() {
     expect(saved.single['isResearch'], isTrue);
   });
 
-  testWidgets('a research item with a due date shows it on the tile',
+  testWidgets(
+      'a research item keeps its due date but no longer shows it on the tile',
       (tester) async {
     await pumpResearch(
       tester,
@@ -199,7 +200,7 @@ void main() {
       marker: 'Compare CRDT libraries',
     );
 
-    expect(find.text('Due 2026-10-03'), findsOneWidget);
+    expect(find.text('Due 2026-10-03'), findsNothing);
     // The description sits collapsed under the title, like a wish's.
     expect(find.byType(DescriptionDisclosure), findsOneWidget);
   });
@@ -222,5 +223,42 @@ void main() {
     final saved = await readJsonList(tester, 'tasks.json');
     expect(saved.single['note'], 'Ask Sam about pgvector');
     expect(saved.single['isResearch'], isTrue);
+  });
+
+  testWidgets(
+      'items are grouped by state (Active / Next / Someday / Done) and Move '
+      'to changes the state', (tester) async {
+    await pumpResearch(
+      tester,
+      tasks: [
+        Task(title: 'Someday topic', isResearch: true),
+        Task(title: 'Next topic', isResearch: true, label: 'release-soon'),
+        Task(title: 'Active topic', isResearch: true, label: 'release-next'),
+        Task(title: 'Done topic', isResearch: true, isDone: true),
+      ],
+      marker: 'Active topic',
+    );
+    double topOf(String t) => tester.getTopLeft(find.text(t)).dy;
+    expect(find.text('Active (1)'), findsOneWidget);
+    expect(find.text('Next (1)'), findsOneWidget);
+    expect(find.text('Someday (1)'), findsOneWidget);
+    expect(find.text('Done (1)'), findsOneWidget);
+    expect(topOf('Active (1)'), lessThan(topOf('Next (1)')));
+    expect(topOf('Next (1)'), lessThan(topOf('Someday (1)')));
+    expect(topOf('Someday (1)'), lessThan(topOf('Done (1)')));
+    // The state token isn't shown as a label chip.
+    expect(find.text('release-next'), findsNothing);
+
+    await tester.tap(find.byTooltip('Move to').at(2)); // the Someday item
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.widgetWithText(CheckedPopupMenuItem<String>, 'Active'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Active (2)'), findsOneWidget);
+    final saved = await readJsonList(tester, 'tasks.json');
+    final moved = saved.firstWhere((t) => t['title'] == 'Someday topic');
+    expect(moved['label'], 'release-next');
   });
 }

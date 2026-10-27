@@ -1,5 +1,10 @@
 # Pocket → Todoist ingestion routine — the thing that fills the approval queue
 
+> **Being replaced (0.2.123):** the voice inbox (`docs/proposals/voice-inbox.md`,
+> SPEC §4.2j) sorts each item into a category with `[Group:]`/`[Suggest:]`/…
+> marker lines; its routine prompt is `docs/proposals/voice-inbox-routine.md`.
+> Retire the routine below once that one runs, so items aren't created twice.
+
 Every task in Tools ▸ **Waiting for Approval** (SPEC §4.2e) that wasn't typed by
 hand into Todoist comes from one external, out-of-repo automation: a **Claude
 Routine** (a Claude Code Remote scheduled trigger, *not* code in this repo,

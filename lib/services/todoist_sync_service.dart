@@ -12,6 +12,7 @@ import '../models/task.dart';
 import '../models/task_change_source.dart';
 import '../models/todoist_sync_map_entry.dart';
 import '../utils/label_utils.dart';
+import '../utils/voice_inbox.dart';
 import 'item_repository.dart';
 import 'log_service.dart';
 import 'project_service.dart';
@@ -476,12 +477,16 @@ class TodoistSyncService {
 
     // Recurring tasks (parents and generated instances) are out of scope —
     // see the class doc. Wishlist items are in scope (routed to the
-    // Wishlist project below). Food Diary entries never leave the app.
+    // Wishlist project below). Food Diary entries and grocery items never
+    // leave the app — one pulled in from a voice note keeps its mapping just
+    // long enough for step 1 of the next run to delete it on Todoist's side,
+    // so it's pulled exactly once.
     final syncable = allLocal
         .where((t) =>
             !t.isRecurring &&
             t.recurrenceParentUid == null &&
-            !t.isEatingHabit)
+            !t.isEatingHabit &&
+            !t.isGrocery)
         .toList();
     final syncableByUid = {for (final t in syncable) t.uid: t};
 
@@ -862,7 +867,15 @@ class TodoistSyncService {
     final parts = TodoistMetadataCodec.parse(
       remoteTask['description'] as String? ?? '',
     );
-    task.description = parts.visible;
+    // Voice-inbox markers never show up in the visible description. An
+    // `[Obsidian: …]` link is taken whenever it arrives (the routine adds it
+    // after approval); the sorting markers only while the item still waits
+    // for approval, so a hand-typed Todoist task the routine sorts later
+    // moves out of Other by itself.
+    final (visible, markers) = parseVoiceMarkers(parts.visible);
+    task.description = visible;
+    if (markers.obsidian != null) task.obsidianLink = markers.obsidian;
+    final stillPending = hasWaitingApprovalToken(task.label);
     final meta = parts.meta;
     if (meta != null) {
       task.note = meta['note'] as String? ?? '';
@@ -874,6 +887,12 @@ class TodoistSyncService {
     // app last pushed) — otherwise a label added/removed via Todoist's own
     // label UI, which never touches the description, is invisible here.
     task.label = _labelsFromRemote(remoteTask);
+    if (stillPending) {
+      // The remote label array is the source of truth, but the approval gate
+      // is a local decision: a pending item stays pending.
+      task.label = addLabelToken(task.label, waitingApprovalToken);
+      _applySortingMarkers(task, markers);
+    }
     final remoteProjectId = remoteTask['project_id'] == null
         ? null
         : _idOf(remoteTask['project_id']);
@@ -896,6 +915,44 @@ class TodoistSyncService {
       // task's existing project assignment and wishlist status alone.
     }
     _applyRemoteDue(task, remoteTask['due']);
+    if (stillPending && task.approvalGroup == ApprovalGroups.food) {
+      _turnIntoFoodEntry(task);
+    }
+  }
+
+  /// Copies the voice-inbox sorting markers onto a pending [task]. A key the
+  /// markers don't carry leaves the stored value alone.
+  void _applySortingMarkers(Task task, VoiceMarkers markers) {
+    if (markers.source != null) task.pendingSourceTitle = markers.source;
+    if (markers.group != null) {
+      task.approvalGroup = ApprovalGroups.normalize(markers.group);
+    }
+    if (markers.suggest != null) task.approvalSuggestion = markers.suggest;
+    if (markers.project != null) task.obsidianProject = markers.project;
+    if (markers.groceryCategory != null) {
+      task.groceryCategory = markers.groceryCategory;
+    }
+    if (markers.transcript != null) task.transcriptPath = markers.transcript;
+  }
+
+  /// A voice note the routine sorted as food skips approval: it becomes a
+  /// Food Diary entry right away, timed at its Todoist due time (the
+  /// recording time) or, without one, its creation time. `[Suggest: verify]`
+  /// (or `new`) means the routine couldn't match it to an existing meal —
+  /// the entry gets the blue "please verify" dot.
+  void _turnIntoFoodEntry(Task task) {
+    task.label = removeWaitingApprovalToken(task.label);
+    task.isEatingHabit = true;
+    task.isWish = false;
+    task.projectId = null;
+    task.approvedAt = DateTime.now();
+    final suggestion = task.approvalSuggestion?.trim().toLowerCase();
+    task.needsVerification = suggestion == 'verify' || suggestion == 'new';
+    if (task.dueDate == null || !task.hasExplicitTime) {
+      final at = task.createdAt ?? DateTime.now();
+      task.dueDate = at;
+      task.hasExplicitTime = true;
+    }
   }
 
   void _applyRemoteDue(Task task, dynamic due) {
@@ -928,25 +985,10 @@ class TodoistSyncService {
     }
   }
 
-  /// Recognizes a leading `[Source: <conversation title>]` line an external
-  /// ingestion routine can prepend to a freshly created Todoist task's
-  /// description — see `.claude/notes/pocket-todoist-ingestion.md` (the
-  /// Pocket-to-Todoist approval-queue routine this was built for). Lets a
-  /// routine that fans a single run out across many small conversations name
-  /// each task's source without needing a dedicated Todoist project per
-  /// conversation (which would litter the project list). Returns the
-  /// description with the marker line removed, and the extracted title (null
-  /// if there was none).
-  static final RegExp _sourceMarkerPattern =
-      RegExp(r'^\[Source:\s*([^\]]+)\][ \t]*\n?', caseSensitive: false);
-
-  (String, String?) _extractSourceMarker(String description) {
-    final match = _sourceMarkerPattern.firstMatch(description);
-    if (match == null) return (description, null);
-    final title = match.group(1)!.trim();
-    final rest = description.substring(match.end).trimLeft();
-    return (rest, title.isEmpty ? null : title);
-  }
+  // The `[Source: <title>]` marker (and the rest of the voice-inbox marker
+  // lines — `[Group:]`, `[Suggest:]`, …) is parsed by [parseVoiceMarkers] in
+  // `lib/utils/voice_inbox.dart`; see `.claude/notes/pocket-todoist-
+  // ingestion.md` and `docs/proposals/voice-inbox.md` for the convention.
 
   /// Builds a brand-new local task from a Todoist-side task this app has
   /// never seen before — first-launch import and step 4's "brand-new
@@ -961,8 +1003,9 @@ class TodoistSyncService {
   /// created this" the Waiting for Approval page groups by (see that
   /// field's doc). Passed in rather than looked up here since building it
   /// needs the same `remoteProjects` fetch every call site already has. A
-  /// [_sourceMarkerPattern] line in the description wins over the project
-  /// name when both are present.
+  /// `[Source: …]` marker line in the description wins over the project
+  /// name when both are present; the other voice-inbox markers are stored on
+  /// the task too, and a `[Group: food]` item skips approval entirely.
   Task _taskFromRemote(
     Map<String, dynamic> remoteTask,
     Map<String, String> todoistToLocalProject, {
@@ -972,8 +1015,8 @@ class TodoistSyncService {
       remoteTask['description'] as String? ?? '',
     );
     final meta = parts.meta;
-    final (visibleDescription, markerSourceTitle) =
-        _extractSourceMarker(parts.visible);
+    final (visibleDescription, markers) = parseVoiceMarkers(parts.visible);
+    final markerSourceTitle = markers.source;
     final remoteProjectId = remoteTask['project_id'] == null
         ? null
         : _idOf(remoteTask['project_id']);
@@ -993,8 +1036,11 @@ class TodoistSyncService {
           : mapped,
       isWish: mapped == _wishlistProjectKey,
       kanbanStatus: meta?['kanbanStatus'] as String? ?? Task.kanbanTodo,
+      obsidianLink: markers.obsidian,
     );
+    _applySortingMarkers(task, markers);
     _applyRemoteDue(task, remoteTask['due']);
+    if (task.approvalGroup == ApprovalGroups.food) _turnIntoFoodEntry(task);
     return task;
   }
 

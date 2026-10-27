@@ -11,6 +11,7 @@ import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/recurrence_service.dart';
 import '../utils/date_utils.dart';
+import '../utils/voice_inbox.dart';
 import 'label_picker.dart';
 import 'recurrence_scope_dialog.dart';
 import 'speech_input_button.dart';
@@ -23,6 +24,11 @@ import 'task_tile.dart';
 /// from the Waiting for Approval page's "Research" quick tag. Entries never
 /// appear on the home tabs, the schedule view, projects or Todoist — see
 /// [ItemViews.research].
+///
+/// Entries are grouped by state — **Active**, **Next**, **Someday** (stored
+/// as the wishlist's release tokens, see [backlogStateOf]) and **Done** for
+/// checked-off ones — newest first within a section. Each card's "Move to"
+/// button changes the state. The due date is kept but not shown.
 ///
 /// Each entry is rendered with the very same [TaskTile] the home tabs use,
 /// so a research item has every field a normal item has — done checkbox,
@@ -92,6 +98,54 @@ class _ResearchPageState extends State<ResearchPage> {
       return bTime.compareTo(aTime);
     });
     return entries;
+  }
+
+  /// Moves [entry] to [state] (Active / Next / Someday).
+  void _setState(Task entry, String state) {
+    setState(() => setBacklogState(entry, state));
+    _save();
+  }
+
+  /// [_entries] split into the page's sections, in display order; empty
+  /// sections are left out.
+  List<MapEntry<String, List<Task>>> _sections() {
+    final entries = _entries();
+    final done = entries.where((t) => t.isDone).toList();
+    return [
+      for (final state in BacklogStates.all)
+        MapEntry(
+          BacklogStates.title(state),
+          entries
+              .where((t) => !t.isDone && backlogStateOf(t) == state)
+              .toList(),
+        ),
+      MapEntry('Done', done),
+    ].where((e) => e.value.isNotEmpty).toList();
+  }
+
+  Widget _buildCard(Task entry) {
+    return Card(
+      key: ValueKey('research-${entry.uid}'),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _buildTile(entry)),
+          PopupMenuButton<String>(
+            tooltip: 'Move to',
+            icon: const Icon(Icons.swap_vert),
+            onSelected: (state) => _setState(entry, state),
+            itemBuilder: (context) => [
+              for (final state in BacklogStates.all)
+                CheckedPopupMenuItem(
+                  value: state,
+                  checked: backlogStateOf(entry) == state,
+                  child: Text(BacklogStates.title(state)),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _addEntry() async {
@@ -390,7 +444,8 @@ class _ResearchPageState extends State<ResearchPage> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = _entries();
+    final sections = _sections();
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: buildSubpageAppBar(context, title: 'Research'),
       floatingActionButton: FloatingActionButton(
@@ -400,7 +455,7 @@ class _ResearchPageState extends State<ResearchPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : entries.isEmpty
+          : sections.isEmpty
               ? const Center(
                   child: Padding(
                     padding: EdgeInsets.all(24),
@@ -412,13 +467,21 @@ class _ResearchPageState extends State<ResearchPage> {
                     ),
                   ),
                 )
-              : ListView.builder(
+              : ListView(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) => Card(
-                    key: ValueKey('research-${entries[index].uid}'),
-                    child: _buildTile(entries[index]),
-                  ),
+                  children: [
+                    for (final section in sections) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                        child: Text(
+                          '${section.key} (${section.value.length})',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      for (final entry in section.value) _buildCard(entry),
+                    ],
+                  ],
                 ),
     );
   }

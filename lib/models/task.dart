@@ -32,6 +32,36 @@ class Task {
   /// back to Todoist — purely local display metadata.
   String? pendingSourceTitle;
 
+  /// Voice-inbox category the sorting routine gave this pending item —
+  /// one of `ApprovalGroups.all` (`lib/utils/voice_inbox.dart`), read from a
+  /// `[Group: …]` description marker on pull. Decides which section of the
+  /// Waiting for Approval page it sits in and which swipe options it gets.
+  /// Null means "not sorted yet" (shown under Other). Local-only, like
+  /// [pendingSourceTitle].
+  String? approvalGroup;
+
+  /// The destination the routine suggested (`[Suggest: …]`): a day bucket
+  /// (`today`, `tomorrow`, …) for Todo/Migros/Lemmon, a state (`active`,
+  /// `next`, `someday`) for Backlog/Research. Pre-selected on approval.
+  String? approvalSuggestion;
+
+  /// Vault path of the project page the routine matched a backlog item to
+  /// (`[Project: …]`), shown in the details panel.
+  String? obsidianProject;
+
+  /// Vault path of the Pocket transcript this item came from
+  /// (`[Transcript: …]`).
+  String? transcriptPath;
+
+  /// Link to this item's Obsidian page (`[Obsidian: …]`), written back by the
+  /// routine once it created the page — read on every pull, approved or not.
+  String? obsidianLink;
+
+  /// Food Diary entry the routine created from a voice note without being
+  /// sure it matched an existing meal — shown with a small blue "please
+  /// verify" dot until the entry is edited or confirmed.
+  bool needsVerification;
+
   /// How this task came into existence — one of [TaskChangeSource]'s
   /// constants: `user` (typed in the app), `sync` (pulled in from Todoist,
   /// i.e. the Waiting for Approval path), `share` (Android share sheet) or
@@ -167,6 +197,15 @@ class Task {
   /// via the "Research" quick tag (see `waiting_approval_page.dart`).
   bool isResearch;
 
+  /// When true this task is a grocery-list item: it shows up only in the
+  /// Groceries tool (a reusable checklist grouped by [groceryCategory]) —
+  /// never the home tabs, schedule view, projects or Todoist sync.
+  bool isGrocery;
+
+  /// The grocery category this item is grouped under (one of
+  /// `GroceryCategoryService`'s names); null falls into "Other".
+  String? groceryCategory;
+
   /// Sentinel due date the schedule view's "move to" tab picker uses to
   /// place a task in the Future tab explicitly, without leaving it fully
   /// undated. Exposed here (rather than kept private to the home page) so
@@ -207,6 +246,12 @@ class Task {
     this.label = '',
     this.createdAt,
     this.pendingSourceTitle,
+    this.approvalGroup,
+    this.approvalSuggestion,
+    this.obsidianProject,
+    this.transcriptPath,
+    this.obsidianLink,
+    this.needsVerification = false,
     this.origin,
     this.approvedAt,
     this.completedAt,
@@ -239,6 +284,8 @@ class Task {
     List<String>? stomachSymptomTypes,
     this.stomachIntensity,
     this.isResearch = false,
+    this.isGrocery = false,
+    this.groceryCategory,
     this.projectId,
     this.kanbanStatus = kanbanTodo,
     List<Attachment>? attachments,
@@ -290,6 +337,12 @@ class Task {
           ? DateTime.parse(json['createdAt'] as String)
           : null,
       pendingSourceTitle: json['pendingSourceTitle'] as String?,
+      approvalGroup: json['approvalGroup'] as String?,
+      approvalSuggestion: json['approvalSuggestion'] as String?,
+      obsidianProject: json['obsidianProject'] as String?,
+      transcriptPath: json['transcriptPath'] as String?,
+      obsidianLink: json['obsidianLink'] as String?,
+      needsVerification: json['needsVerification'] as bool? ?? false,
       origin: json['origin'] as String?,
       approvedAt: DateTime.tryParse(json['approvedAt'] as String? ?? ''),
       completedAt: json['completedAt'] != null
@@ -341,6 +394,8 @@ class Task {
               : null),
       stomachIntensity: json['stomachIntensity'] as int?,
       isResearch: json['isResearch'] as bool? ?? false,
+      isGrocery: json['isGrocery'] as bool? ?? false,
+      groceryCategory: json['groceryCategory'] as String?,
       projectId: json['projectId'] as String?,
       kanbanStatus: json['kanbanStatus'] as String? ?? kanbanTodo,
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
@@ -360,6 +415,13 @@ class Task {
         'createdAt': createdAt?.toIso8601String(),
         if (pendingSourceTitle != null)
           'pendingSourceTitle': pendingSourceTitle,
+        if (approvalGroup != null) 'approvalGroup': approvalGroup,
+        if (approvalSuggestion != null)
+          'approvalSuggestion': approvalSuggestion,
+        if (obsidianProject != null) 'obsidianProject': obsidianProject,
+        if (transcriptPath != null) 'transcriptPath': transcriptPath,
+        if (obsidianLink != null) 'obsidianLink': obsidianLink,
+        if (needsVerification) 'needsVerification': needsVerification,
         if (origin != null) 'origin': origin,
         if (approvedAt != null) 'approvedAt': approvedAt!.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),
@@ -399,6 +461,8 @@ class Task {
           'stomachSymptomTypes': stomachSymptomTypes,
         if (stomachIntensity != null) 'stomachIntensity': stomachIntensity,
         'isResearch': isResearch,
+        if (isGrocery) 'isGrocery': isGrocery,
+        if (groceryCategory != null) 'groceryCategory': groceryCategory,
         if (projectId != null) 'projectId': projectId,
         'kanbanStatus': kanbanStatus,
         if (attachments.isNotEmpty)

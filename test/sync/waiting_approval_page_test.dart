@@ -61,6 +61,15 @@ void main() {
     }
   }
 
+  /// Picks [option] ('By category' / 'By conversation' / 'One list') from
+  /// the app bar's "Group by" menu.
+  Future<void> groupBy(WidgetTester tester, String option) async {
+    await tester.tap(find.byTooltip('Group by'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(option));
+    await tester.pumpAndSettle();
+  }
+
   Future<List<dynamic>> readJsonList(WidgetTester tester, String name) async {
     return await tester.runAsync(() async {
       final file = File('${tempDir.path}/$name');
@@ -74,7 +83,11 @@ void main() {
     await pumpPending(
       tester,
       tasks: [
-        Task(title: 'From Todoist', label: waitingApprovalToken),
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
         Task(title: 'Already approved', dueDate: DateTime.now()),
       ],
       marker: 'From Todoist',
@@ -88,7 +101,13 @@ void main() {
       'schedules it', (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -117,7 +136,13 @@ void main() {
       (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -140,7 +165,13 @@ void main() {
   testWidgets('deny swipe shows Deny plus weekday shortcuts', (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -157,7 +188,13 @@ void main() {
       (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -180,7 +217,11 @@ void main() {
     await pumpPending(
       tester,
       tasks: [
-        Task(title: 'From Todoist', label: waitingApprovalToken),
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
         Task(title: 'Already approved', dueDate: DateTime.now()),
       ],
       marker: 'From Todoist',
@@ -213,7 +254,13 @@ void main() {
   testWidgets('undo restores a denied item', (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -240,7 +287,13 @@ void main() {
       (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -260,7 +313,13 @@ void main() {
       (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -310,7 +369,13 @@ void main() {
       (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -352,7 +417,13 @@ void main() {
       'Details page', (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
@@ -366,8 +437,8 @@ void main() {
   });
 
   testWidgets(
-      'the grouping toggle switches between grouped by conversation (the '
-      'default) and one list', (tester) async {
+      'the Group by menu switches between by category (the default), by '
+      'conversation and one list', (tester) async {
     await pumpPending(
       tester,
       tasks: [
@@ -381,20 +452,21 @@ void main() {
       marker: 'Book flights',
     );
 
+    // By category: neither item was sorted by the routine, so both are Other.
+    expect(find.text('Other (2)'), findsOneWidget);
+
+    await groupBy(tester, 'By conversation');
     expect(find.text('Trip planning (1)'), findsOneWidget);
     expect(find.text('Unspecified (1)'), findsOneWidget);
     expect(find.text('Book flights'), findsOneWidget);
     expect(find.text('Buy groceries'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Show as one list'));
-    await tester.pump();
-
+    await groupBy(tester, 'One list');
     expect(find.text('Trip planning (1)'), findsNothing);
+    expect(find.text('Other (2)'), findsNothing);
     expect(find.text('Book flights'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Group by conversation'));
-    await tester.pump();
-
+    await groupBy(tester, 'By conversation');
     expect(find.text('Trip planning (1)'), findsOneWidget);
     expect(find.text('Book flights'), findsOneWidget);
     expect(find.text('Buy groceries'), findsOneWidget);
@@ -425,6 +497,7 @@ void main() {
       ],
       marker: 'Old item A',
     );
+    await groupBy(tester, 'By conversation');
 
     // A and B share an hour bucket; C, created five hours later, gets its
     // own group. None of them fall into "Unspecified" — they all have a
@@ -456,7 +529,7 @@ void main() {
   });
 
   testWidgets(
-      'long-pressing an item starts multi-select; Approve selected approves '
+      'the Select button starts multi-select; Approve selected approves '
       'every checked item', (tester) async {
     await pumpPending(
       tester,
@@ -467,7 +540,11 @@ void main() {
       marker: 'From Todoist',
     );
 
-    await tester.longPress(find.text('From Todoist'));
+    await tester.tap(find.byTooltip('Select'));
+    await tester.pump();
+    expect(find.text('0 selected'), findsOneWidget);
+
+    await tester.tap(find.text('From Todoist'));
     await tester.pump();
     expect(find.text('1 selected'), findsOneWidget);
 
@@ -488,7 +565,7 @@ void main() {
   });
 
   testWidgets(
-      'long-press then Deny selected sends every checked item to the bin',
+      'Select then Deny selected sends every checked item to the bin',
       (tester) async {
     await pumpPending(
       tester,
@@ -499,7 +576,9 @@ void main() {
       marker: 'From Todoist',
     );
 
-    await tester.longPress(find.text('From Todoist'));
+    await tester.tap(find.byTooltip('Select'));
+    await tester.pump();
+    await tester.tap(find.text('From Todoist'));
     await tester.pump();
     await tester.tap(find.text('Second item'));
     await tester.pump();
@@ -521,11 +600,19 @@ void main() {
       (tester) async {
     await pumpPending(
       tester,
-      tasks: [Task(title: 'From Todoist', label: waitingApprovalToken)],
+      tasks: [
+        Task(
+          title: 'From Todoist',
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+        ),
+      ],
       marker: 'From Todoist',
     );
 
-    await tester.longPress(find.text('From Todoist'));
+    await tester.tap(find.byTooltip('Select'));
+    await tester.pump();
+    await tester.tap(find.text('From Todoist'));
     await tester.pump();
     expect(find.text('1 selected'), findsOneWidget);
 
@@ -556,6 +643,7 @@ void main() {
       ],
       marker: 'Book flights',
     );
+    await groupBy(tester, 'By conversation');
 
     await tester.longPress(find.text('Trip planning (2)'));
     await tester.pump();
@@ -597,8 +685,7 @@ void main() {
     );
 
     // One flat list makes vertical order easy to compare.
-    await tester.tap(find.byTooltip('Show as one list'));
-    await tester.pump();
+    await groupBy(tester, 'One list');
 
     double topOf(String text) => tester.getTopLeft(find.text(text)).dy;
 
@@ -638,7 +725,254 @@ void main() {
       ],
       marker: 'Book flights',
     );
+    await groupBy(tester, 'By conversation');
 
     expect(find.text('2026-01-15  Trip planning (1)'), findsOneWidget);
+  });
+
+  group('voice inbox categories', () {
+    testWidgets('pending items are sectioned by category, in category order',
+        (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [
+          Task(title: 'Unsorted', label: waitingApprovalToken),
+          Task(
+              title: 'Idea',
+              label: waitingApprovalToken,
+              approvalGroup: 'backlog'),
+          Task(
+              title: 'Call dentist',
+              label: waitingApprovalToken,
+              approvalGroup: 'todo'),
+        ],
+        marker: 'Idea',
+      );
+
+      double topOf(String text) => tester.getTopLeft(find.text(text)).dy;
+      expect(find.text('Todo (1)'), findsOneWidget);
+      expect(find.text('Backlog (1)'), findsOneWidget);
+      expect(find.text('Other (1)'), findsOneWidget);
+      expect(topOf('Todo (1)'), lessThan(topOf('Backlog (1)')));
+      expect(topOf('Backlog (1)'), lessThan(topOf('Other (1)')));
+    });
+
+    testWidgets(
+        'the suggested day shows on the row and is what the countdown '
+        'applies', (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [
+          Task(
+            title: 'Call dentist',
+            label: waitingApprovalToken,
+            approvalGroup: 'todo',
+            approvalSuggestion: 'tomorrow',
+          ),
+        ],
+        marker: 'Call dentist',
+      );
+      expect(find.text('→ Tomorrow'), findsOneWidget);
+
+      await tester.drag(find.text('Call dentist'), const Offset(300, 0));
+      await tester.pump();
+      await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
+      await settleWrites(tester);
+
+      final saved = await readJsonList(tester, 'tasks.json');
+      final due = DateTime.parse(saved.single['dueDate'] as String);
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      expect(due.day, tomorrow.day);
+      expect(saved.single['label'], isNot(contains('approval')));
+    });
+
+    testWidgets('approving a Migros item onto a day adds the mlr label',
+        (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [
+          Task(
+              title: 'Order shelves',
+              label: waitingApprovalToken,
+              approvalGroup: 'migros'),
+        ],
+        marker: 'Order shelves',
+      );
+      await tester.drag(find.text('Order shelves'), const Offset(300, 0));
+      await tester.pump();
+      await tester.tap(find.text('Tomorrow'));
+      await tester.pump();
+      await settleWrites(tester);
+
+      final saved = await readJsonList(tester, 'tasks.json');
+      expect(saved.single['label'], worklistToken);
+    });
+
+    testWidgets('approving a Lemmon item adds the lemmon label',
+        (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [
+          Task(
+              title: 'Send pitch',
+              label: waitingApprovalToken,
+              approvalGroup: 'lemmon'),
+        ],
+        marker: 'Send pitch',
+      );
+      await tester.tap(find.byTooltip('Approve'));
+      await tester.pump();
+      await settleWrites(tester);
+
+      final saved = await readJsonList(tester, 'tasks.json');
+      expect(saved.single['label'], lemmonToken);
+    });
+
+    testWidgets(
+        'a Backlog item swipes to Active / Next / Someday and lands in the '
+        'Wishlist in that state', (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [
+          Task(
+              title: 'Dark mode for widget',
+              label: waitingApprovalToken,
+              approvalGroup: 'backlog'),
+        ],
+        marker: 'Dark mode for widget',
+      );
+      await tester.drag(find.text('Dark mode for widget'), const Offset(300, 0));
+      await tester.pump();
+      expect(find.text('Active'), findsOneWidget);
+      expect(find.text('Next'), findsOneWidget);
+      expect(find.text('Someday'), findsOneWidget);
+      expect(find.text('Today'), findsNothing);
+
+      await tester.tap(find.text('Active'));
+      await tester.pump();
+      await settleWrites(tester);
+
+      final saved = await readJsonList(tester, 'tasks.json');
+      expect(saved.single['isWish'], isTrue);
+      expect(saved.single['label'], 'release-next');
+    });
+
+    testWidgets(
+        'a Research item\'s countdown applies the suggested state into the '
+        'Research tool', (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [
+          Task(
+            title: 'Heat battery maths',
+            label: waitingApprovalToken,
+            approvalGroup: 'research',
+            approvalSuggestion: 'someday',
+          ),
+        ],
+        marker: 'Heat battery maths',
+      );
+      expect(find.text('→ Someday'), findsOneWidget);
+      await tester.drag(find.text('Heat battery maths'), const Offset(300, 0));
+      await tester.pump();
+      await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
+      await settleWrites(tester);
+
+      final saved = await readJsonList(tester, 'tasks.json');
+      expect(saved.single['isResearch'], isTrue);
+      expect(saved.single['label'], '');
+    });
+
+    testWidgets(
+        'swiping an Other item opens the category picker; it stays pending '
+        'in the picked category', (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [Task(title: 'Unsorted', label: waitingApprovalToken)],
+        marker: 'Unsorted',
+      );
+      await tester.drag(find.text('Unsorted'), const Offset(300, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('Move "Unsorted" to'), findsOneWidget);
+      await tester.tap(find.text('Research'));
+      await tester.pumpAndSettle();
+      await settleWrites(tester);
+
+      expect(find.text('Research (1)'), findsOneWidget);
+      final saved = await readJsonList(tester, 'tasks.json');
+      expect(saved.single['approvalGroup'], 'research');
+      expect(saved.single['label'], contains('approval'));
+    });
+
+    testWidgets('a long-press drag onto another section re-sorts the item',
+        (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [
+          Task(
+              title: 'Buy milk',
+              label: waitingApprovalToken,
+              approvalGroup: 'todo'),
+          Task(
+              title: 'Big idea',
+              label: waitingApprovalToken,
+              approvalGroup: 'backlog'),
+        ],
+        marker: 'Buy milk',
+      );
+      final gesture =
+          await tester.startGesture(tester.getCenter(find.text('Buy milk')));
+      await tester.pump(const Duration(milliseconds: 700));
+      // Dragging shows every pickable category, empty ones included.
+      expect(find.text('Groceries (0)'), findsOneWidget);
+      await gesture.moveTo(tester.getCenter(find.text('Groceries (0)')));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      await settleWrites(tester);
+
+      expect(find.text('Groceries (1)'), findsOneWidget);
+      final saved = await readJsonList(tester, 'tasks.json');
+      final milk = saved.firstWhere((t) => t['title'] == 'Buy milk');
+      expect(milk['approvalGroup'], 'groceries');
+    });
+
+    testWidgets(
+        'approving groceries puts them on the list; one already there is '
+        'unchecked instead of duplicated', (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [
+          Task(title: 'Milk', isGrocery: true, isDone: true,
+              groceryCategory: 'Dairy & eggs'),
+          Task(
+              title: 'milk',
+              label: waitingApprovalToken,
+              approvalGroup: 'groceries'),
+          Task(
+              title: 'Pasta',
+              label: waitingApprovalToken,
+              approvalGroup: 'groceries',
+              groceryCategory: 'pasta & rice'),
+        ],
+        marker: 'Pasta',
+      );
+      await tester.tap(find.byTooltip('Select'));
+      await tester.pump();
+      await tester.tap(find.text('milk'));
+      await tester.tap(find.text('Pasta'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Approve selected'));
+      await tester.pump();
+      await settleWrites(tester);
+
+      final saved = await readJsonList(tester, 'tasks.json');
+      expect(saved.map((t) => t['title']), ['Milk', 'Pasta']);
+      final milk = saved.firstWhere((t) => t['title'] == 'Milk');
+      expect(milk['isDone'], isFalse);
+      final pasta = saved.firstWhere((t) => t['title'] == 'Pasta');
+      expect(pasta['isGrocery'], isTrue);
+      expect(pasta['groceryCategory'], 'Pasta & rice');
+    });
   });
 }

@@ -20,6 +20,7 @@ import '../models/task.dart';
 import '../models/task_change_source.dart';
 import '../models/view_filter_rules.dart';
 import '../services/alarm_service.dart';
+import '../models/home_contexts.dart';
 import '../services/auto_backup_service.dart';
 import '../services/auto_tag_service.dart';
 import '../services/wear_sync_service.dart';
@@ -58,6 +59,7 @@ import 'recurrence_scope_dialog.dart';
 import 'deleted_bin_page.dart';
 import 'dice_timer_page.dart';
 import 'food_diary_page.dart';
+import 'groceries_page.dart';
 import 'fitness_activity_page.dart';
 import 'home_scaffold_key.dart';
 import 'startup_times_page.dart';
@@ -1230,6 +1232,11 @@ class _HomePageState extends State<HomePage>
         // search and interactions, just a second HomePage instance with its
         // own in-memory copy of the (shared, on-disk) task list.
         return const HomePage(tagFilter: worklistToken, toolTitle: 'Worklist');
+      case 'lemmon':
+        // The second work context, built exactly like Worklist.
+        return const HomePage(tagFilter: lemmonToken, toolTitle: 'Lemmon');
+      case 'groceries':
+        return const GroceriesPage();
       case 'f1_reminder':
         return const F1ReminderPage();
       case 'compass':
@@ -1259,7 +1266,9 @@ class _HomePageState extends State<HomePage>
       if (tool == 'wishlist' ||
           tool == 'food_diary' ||
           tool == 'research' ||
-          tool == 'worklist') {
+          tool == 'worklist' ||
+          tool == 'lemmon' ||
+          tool == 'groceries') {
         _reloadTasksFromStorage();
       }
     });
@@ -1343,6 +1352,10 @@ class _HomePageState extends State<HomePage>
   /// Set once [_loadTasks] has filled [_tasks]; watch commands wait for it
   /// (in the native queue) so none is taken against an empty list.
   bool _wearReady = false;
+
+  /// Whether the drawer's Home row has its Todo/MLR/Lemmon toggles folded
+  /// out. Not persisted — the toggles' values are, this is just the fold.
+  bool _homeTogglesOpen = false;
   bool _wearApplying = false;
 
   /// Applies the "done" taps queued by the Wear OS companion
@@ -2510,7 +2523,9 @@ class _HomePageState extends State<HomePage>
       // Move completed tasks to the deleted list when progressing to the next
       // day so that finished items no longer clutter the lists.
       if (delta > 0) {
-        final doneTasks = _tasks.where((t) => t.isDone).toList();
+        // Checked grocery items stay on their reusable list.
+        final doneTasks =
+            _tasks.where((t) => t.isDone && !t.isGrocery).toList();
         for (final task in doneTasks) {
           _tasks.remove(task);
           _addToDeletedTasks(task, autoDeleted: true);
@@ -2954,6 +2969,61 @@ class _HomePageState extends State<HomePage>
       where: where,
       rules: applySearch ? _homeFilterRules : null,
       includeWorklistItems: widget.tagFilter != null,
+      contexts: _homeContextsFor(applySearch: applySearch),
+    );
+  }
+
+  /// The drawer's Todo/MLR/Lemmon toggles for this instance's lists — null
+  /// for a tag-filtered tool instance (Worklist, Lemmon), which already
+  /// narrows to its own tag. The full-tab ([applySearch] false) callers that
+  /// renumber [Task.listRanking] see every context, so a narrowed list never
+  /// drives that renumbering on its own — the same rule as search.
+  HomeContexts? _homeContextsFor({bool applySearch = true}) {
+    if (widget.tagFilter != null) return null;
+    if (!applySearch) {
+      return const HomeContexts(todo: true, mlr: true, lemmon: true);
+    }
+    return Config.homeContexts;
+  }
+
+  void _setHomeContexts(HomeContexts contexts) {
+    setState(() => Config.homeContexts = contexts);
+    unawaited(Config.save());
+    LogService.add('HomePage._setHomeContexts',
+        'Home shows todo=${contexts.todo} mlr=${contexts.mlr} lemmon=${contexts.lemmon}');
+  }
+
+  /// The three toggle chips the drawer's Home row folds out.
+  Widget _buildHomeContextToggles() {
+    final contexts = Config.homeContexts;
+    Widget chip(String label, String tooltip, IconData icon, bool selected,
+        HomeContexts Function(bool) next) {
+      return Tooltip(
+        message: tooltip,
+        child: FilterChip(
+          avatar: Icon(icon, size: 18),
+          label: Text(label),
+          selected: selected,
+          showCheckmark: false,
+          onSelected: (on) => _setHomeContexts(next(on)),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          chip('Todo', 'Show regular items', Icons.check_box_outlined,
+              contexts.todo, (on) => contexts.copyWith(todo: on)),
+          chip('MLR', 'Show MLR items', Icons.store_outlined, contexts.mlr,
+              (on) => contexts.copyWith(mlr: on)),
+          chip('Lemmon', 'Show Lemmon items', Icons.work_outline,
+              contexts.lemmon, (on) => contexts.copyWith(lemmon: on)),
+        ],
+      ),
     );
   }
 
@@ -3168,6 +3238,7 @@ class _HomePageState extends State<HomePage>
           (tagFilter == null || labelHasToken(t.label, tagFilter)),
       rules: _homeFilterRules,
       includeWorklistItems: tagFilter != null,
+      contexts: _homeContextsFor(),
     );
     return ScheduleView(
       key: _scheduleViewKey,
@@ -3211,6 +3282,8 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('fitness_activity', 'Fitness Activity', Icons.directions_run),
     _ToolEntry('test_results', 'Test Results', Icons.fact_check),
     _ToolEntry('worklist', 'Worklist', Icons.checklist),
+    _ToolEntry('lemmon', 'Lemmon', Icons.work_outline),
+    _ToolEntry('groceries', 'Groceries', Icons.shopping_basket_outlined),
     _ToolEntry('f1_reminder', 'F1 Reminder', Icons.sports_score),
     _ToolEntry('compass', 'Compass', Icons.explore),
     _ToolEntry('pc_watcher', 'PC Watcher', Icons.computer),
@@ -3250,11 +3323,12 @@ class _HomePageState extends State<HomePage>
     // target task apart from one that just has not fired yet today.
     StreakService.instance.syncKnownTasks(_tasks);
     final enabledTools = _toolEntries
-        // A tag-filtered instance (Worklist) is itself the Worklist tool, so
+        // A tag-filtered instance (Worklist, Lemmon) is itself that tool, so
         // it never lists itself among the tools it can open.
         .where((t) =>
             Config.isFeatureEnabled(t.key) &&
-            !(widget.tagFilter != null && t.key == 'worklist'))
+            !(widget.tagFilter == worklistToken && t.key == 'worklist') &&
+            !(widget.tagFilter == lemmonToken && t.key == 'lemmon'))
         .toList();
     final pendingApprovalCount = ItemViews.waitingApproval(_tasks).length;
     final scaffold = Scaffold(
@@ -3276,11 +3350,28 @@ class _HomePageState extends State<HomePage>
             ListTile(
               leading: const Icon(Icons.home),
               title: const Text('Home'),
+              // Only the real home page has the context toggles; the arrow
+              // folds them out without leaving the drawer, a tap on the row
+              // itself still goes home.
+              trailing: widget.tagFilter == null
+                  ? IconButton(
+                      tooltip: _homeTogglesOpen
+                          ? 'Hide home filters'
+                          : 'Show home filters',
+                      icon: Icon(_homeTogglesOpen
+                          ? Icons.expand_less
+                          : Icons.expand_more),
+                      onPressed: () =>
+                          setState(() => _homeTogglesOpen = !_homeTogglesOpen),
+                    )
+                  : null,
               onTap: () {
                 Navigator.pop(context);
                 _goHome();
               },
             ),
+            if (widget.tagFilter == null && _homeTogglesOpen)
+              _buildHomeContextToggles(),
             ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
@@ -3709,10 +3800,14 @@ class _HomePageState extends State<HomePage>
     // filtered view is visually distinct from the real home screen at a
     // glance, even though it's otherwise the exact same UI.
     final baseTheme = Theme.of(context);
+    // Lemmon gets its own (lemon-yellow) accent so the two work contexts
+    // can't be mistaken for each other.
+    final accent =
+        widget.tagFilter == lemmonToken ? Colors.amber.shade700 : Colors.orange;
     final orangeScheme = ColorScheme.fromSeed(
-      seedColor: Colors.orange,
+      seedColor: accent,
       brightness: baseTheme.brightness,
-    ).copyWith(primary: Colors.orange);
+    ).copyWith(primary: accent);
     return Theme(
       data: baseTheme.copyWith(colorScheme: orangeScheme),
       child: content,

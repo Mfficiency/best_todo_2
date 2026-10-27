@@ -1,10 +1,16 @@
 # Voice inbox — speak it, Claude sorts it, you approve it
 
-**Status: proposal, not built.** Agreed with the owner on 2026-10-27 from a
-whiteboard sketch plus several rounds of Q&A. Nothing here exists in the app
-yet; when a phase ships, its as-built description moves into `SPEC.md` Part I
-(which only describes the current app) and this file keeps the design record.
-Items still marked **Open** in §13 need an answer before their phase is built.
+**Status: phases 1–3 built (app side) in 0.2.123** — as-built in `SPEC.md`
+§4.2j; the routine's prompt and setup are in `voice-inbox-routine.md`. Still to
+build: phase 4 (the app firing the routine after a Backlog approval so it
+writes the Obsidian page — the app already shows the `[Obsidian:]` link once it
+arrives) and phase 5 (Research "Active" Q&A). Agreed with the owner on
+2026-10-27 from a whiteboard sketch plus several rounds of Q&A. Deviations
+while building: grocery categories are edited from the Groceries page ("Edit
+categories"), not Settings; the Approval page keeps "By conversation" as a
+second grouping; food entries say `[Suggest: verify]` (or `new`) to get the
+blue dot; markers must be at the top of a description (above the app's
+metadata trailer).
 
 Builds on what already exists — read these first:
 SPEC §4.2e (Waiting for Approval, quick tags, `[Source: …]` marker,

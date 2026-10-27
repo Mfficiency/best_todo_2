@@ -284,7 +284,10 @@ class StorageService {
       // the rollover sweep below so swept tasks produce `deleted` events.
       _journalBaseline = _snapshotOf(tasks);
       if (isNewDay) {
-        final doneTasks = tasks.where((t) => t.isDone).toList();
+        // Grocery items are a reusable checklist: a checked one stays on the
+        // list (unchecked again by "Reset list"), it never rolls over.
+        bool sweeps(Task t) => t.isDone && !t.isGrocery;
+        final doneTasks = tasks.where(sweeps).toList();
         if (doneTasks.isNotEmpty) {
           final deletedTasks = await loadDeletedTaskList();
           for (final task in doneTasks) {
@@ -295,7 +298,7 @@ class StorageService {
           }
           await saveDeletedTaskList(deletedTasks);
         }
-        tasks.removeWhere((t) => t.isDone);
+        tasks.removeWhere(sweeps);
       }
       if (isNewDay || backfilled) {
         await saveTaskList(tasks, source: TaskChangeSource.automation);

@@ -9,6 +9,7 @@ import '../models/task.dart';
 import '../models/view_filter_rules.dart';
 import '../services/approval_quick_tag_service.dart';
 import '../services/food_diary_widget_service.dart';
+import '../services/grocery_category_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
@@ -17,6 +18,7 @@ import '../services/todoist_sync_service.dart';
 import '../utils/label_style.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
+import '../utils/voice_inbox.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
 
@@ -49,6 +51,34 @@ const String _unspecifiedGroupTitle = 'Unspecified';
 /// groups themselves) is ordered. [newest] is the default — most recently
 /// created items first.
 enum _SortMode { newest, oldest, alphabetical }
+
+/// How the pending list is sectioned: by voice-inbox category (the default —
+/// see `docs/proposals/voice-inbox.md`), by the conversation it came from,
+/// or not at all.
+enum _Grouping { category, conversation, none }
+
+/// The section a pending [task] is in when grouped by category.
+String _categoryOf(Task task) => ApprovalGroups.of(task.approvalGroup);
+
+/// Human label for a [Task.approvalSuggestion], e.g. "Tomorrow" or "Next";
+/// null when there's nothing usable to show.
+String? _suggestionLabel(Task task) {
+  final group = _categoryOf(task);
+  if (ApprovalGroups.isDated(group)) {
+    final tab = suggestedTabIndex(task.approvalSuggestion);
+    return tab == null ? null : Config.tabs[tab];
+  }
+  if (ApprovalGroups.isStateful(group)) {
+    final state = suggestedState(task.approvalSuggestion);
+    return state == null ? null : BacklogStates.title(state);
+  }
+  return null;
+}
+
+/// The state a Backlog/Research item is approved into when its swipe
+/// countdown runs out: the routine's suggestion, else Next.
+String _defaultStateFor(Task task) =>
+    suggestedState(task.approvalSuggestion) ?? BacklogStates.next;
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
@@ -112,28 +142,31 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   List<Task> _tasks = <Task>[];
   bool _loading = true;
 
-  /// Whether the list is shown grouped by [_groupKeyFor] instead of one flat
-  /// list. Toggled from the app bar; not persisted — each visit starts
-  /// grouped, the more useful default once a conversation has more than a
-  /// couple of pending items.
-  bool _groupByConversation = true;
+  /// How the list is sectioned. Picked from the app bar's "Group by" menu;
+  /// not persisted — each visit starts grouped by category, the sections the
+  /// per-group swipe options belong to.
+  _Grouping _grouping = _Grouping.category;
 
   /// Current ordering of the pending list (and, in grouped view, each
   /// group's items and the groups themselves — see [_groupedPending]).
-  /// Toggled from the app bar; not persisted, same as [_groupByConversation].
+  /// Toggled from the app bar; not persisted, same as [_grouping].
   _SortMode _sortMode = _SortMode.newest;
 
   /// Which pending items are inline-expanded (creation date, source
   /// conversation, Todoist sync info). Several can be open at once.
   final Set<String> _expandedUids = <String>{};
 
-  /// The uids currently selected in multi-select mode; empty means the page
-  /// isn't in selection mode. Long-pressing a tile (or a group header)
-  /// starts a selection; tapping other tiles/headers toggles them in and
-  /// out while selecting.
+  /// The uids currently selected in multi-select mode. The app bar's Select
+  /// button (or long-pressing a group header) starts a selection; tapping
+  /// tiles/headers toggles them in and out while selecting. Long-pressing a
+  /// tile no longer selects — it drags the item to another category.
   final Set<String> _selectedUids = <String>{};
 
-  bool get _selecting => _selectedUids.isNotEmpty;
+  /// True from the Select button until the selection is canceled or acted
+  /// on, so the page stays in selection mode with nothing checked yet.
+  bool _selectionMode = false;
+
+  bool get _selecting => _selectionMode || _selectedUids.isNotEmpty;
 
   @override
   void initState() {
@@ -147,6 +180,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     // top of the expanded details panel need this loaded before they can
     // render, and this page is the only place they're shown.
     await ApprovalQuickTagService.instance.load();
+    await GroceryCategoryService.instance.load();
     if (!mounted) return;
     setState(() {
       _tasks = tasks;
@@ -157,7 +191,12 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   /// Persists the list and redraws the home-screen widget from it — the
   /// widget is a view of the same list, so a denied task has to leave it
   /// too (the home page only pushes on its own saves).
+  /// Set while "Approve selected" runs each item's own approve path, so the
+  /// list is written once at the end instead of once per item.
+  bool _batching = false;
+
   Future<void> _save() async {
+    if (_batching) return;
     await _repository.saveItems(_tasks);
     await TaskWidgetService.sync(_tasks);
     await FoodDiaryWidgetService.sync(_tasks);
@@ -231,15 +270,42 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     return start.add(Duration(days: daysUntil));
   }
 
-  /// Removes [waitingApprovalToken] (and its legacy spellings), making the
-  /// task visible wherever it belongs (today's list, a project, the
-  /// wishlist, ...). The next Todoist sync pushes the shortened label array,
-  /// so the tag disappears on the Todoist side too.
+  /// Lifts the approval gate on [task] — every approve path starts here.
+  /// Removes [waitingApprovalToken] (and its legacy spellings); the next
+  /// Todoist sync pushes the shortened label array, so the tag disappears on
+  /// the Todoist side too. A Migros/Lemmon item also gets its work-context
+  /// label, which is what routes it to Worklist/Lemmon (and the home list's
+  /// MLR/Lemmon toggles).
+  void _liftGate(Task task) {
+    task.label = removeWaitingApprovalToken(task.label);
+    task.approvedAt = DateTime.now();
+    switch (_categoryOf(task)) {
+      case ApprovalGroups.migros:
+        task.label = addLabelToken(task.label, worklistToken);
+        break;
+      case ApprovalGroups.lemmon:
+        task.label = addLabelToken(task.label, lemmonToken);
+        break;
+    }
+  }
+
+  /// The plain Approve button (and "Approve selected"): approves [task] into
+  /// its category with the routine's suggestion when there is one — a dated
+  /// item with no suggestion keeps its date untouched, exactly like before
+  /// the voice inbox. An unsorted (Other) item is approved as a plain task.
   void _approve(Task task) {
-    setState(() {
-      task.label = removeWaitingApprovalToken(task.label);
-      task.approvedAt = DateTime.now();
-    });
+    final group = _categoryOf(task);
+    if (ApprovalGroups.isDated(group)) {
+      final tab = suggestedTabIndex(task.approvalSuggestion);
+      if (tab != null) return _approveWithDate(task, tab);
+    } else if (ApprovalGroups.isStateful(group)) {
+      return _approveToState(task, _defaultStateFor(task));
+    } else if (group == ApprovalGroups.groceries) {
+      return _approveToGroceries(task);
+    } else if (group == ApprovalGroups.food) {
+      return _approveToFoodDiary(task);
+    }
+    setState(() => _liftGate(task));
     _save();
     LogService.add('WaitingApprovalPage._approve', 'Approved "${task.title}"');
   }
@@ -248,8 +314,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   /// into [Config.tabs]) maps to — the swipe-side quick-select shortcuts.
   void _approveWithDate(Task task, int tabIndex) {
     setState(() {
-      task.label = removeWaitingApprovalToken(task.label);
-      task.approvedAt = DateTime.now();
+      _liftGate(task);
       task.dueDate = _dueDateForTab(tabIndex);
       final now = DateTime.now();
       task.movedAt = now;
@@ -264,8 +329,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   void _approveToWeekday(Task task, int weekday) {
     if (weekday < DateTime.monday || weekday > DateTime.sunday) return;
     setState(() {
-      task.label = removeWaitingApprovalToken(task.label);
-      task.approvedAt = DateTime.now();
+      _liftGate(task);
       task.dueDate = _nextWeekdayDate(weekday);
       final now = DateTime.now();
       task.movedAt = now;
@@ -276,6 +340,92 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         'Approved "${task.title}", due ${task.dueDate}');
   }
 
+  /// Approves a Backlog item into the Wishlist or a Research item into the
+  /// Research tool, in [state] (Active / Next / Someday). Any other
+  /// category approved this way (e.g. from "Approve selected") goes to the
+  /// Wishlist.
+  void _approveToState(Task task, String state) {
+    setState(() {
+      _liftGate(task);
+      if (_categoryOf(task) == ApprovalGroups.research) {
+        task.isResearch = true;
+      } else {
+        task.isWish = true;
+      }
+      setBacklogState(task, state);
+    });
+    _save();
+    LogService.add('WaitingApprovalPage._approve',
+        'Approved "${task.title}" as ${BacklogStates.title(state)}');
+  }
+
+  /// Approves [task] onto the grocery list. Something already on the list
+  /// is unchecked instead of added twice (the pending item then just goes
+  /// away) — see [GroceryList.add].
+  void _approveToGroceries(Task task) {
+    setState(() {
+      _liftGate(task);
+      final category = task.groceryCategory == null
+          ? null
+          : GroceryCategoryService.instance.resolve(task.groceryCategory);
+      final kept = GroceryList.add(_tasks, task, category: category);
+      if (!identical(kept, task)) _tasks.remove(task);
+    });
+    _save();
+    LogService.add('WaitingApprovalPage._approve',
+        'Approved "${task.title}" onto the grocery list');
+  }
+
+  /// Approves [task] into the Food Diary (only reachable for an item dragged
+  /// into the Food diary group — routine-sorted food skips approval).
+  void _approveToFoodDiary(Task task) {
+    setState(() {
+      _liftGate(task);
+      task.isEatingHabit = true;
+      if (task.dueDate == null || !task.hasExplicitTime) {
+        task.dueDate = task.createdAt ?? DateTime.now();
+        task.hasExplicitTime = true;
+      }
+    });
+    _save();
+    LogService.add('WaitingApprovalPage._approve',
+        'Approved "${task.title}" into the Food Diary');
+  }
+
+  /// Moves a pending [task] into another category — a long-press drag onto
+  /// a section, or the Other picker. The item stays waiting for approval;
+  /// its suggested destination resets to the new group's default.
+  void _moveToGroup(Task task, String group) {
+    if (_categoryOf(task) == group) return;
+    setState(() {
+      task.approvalGroup = group;
+      task.approvalSuggestion = null;
+    });
+    _save();
+    LogService.add('WaitingApprovalPage._moveToGroup',
+        'Moved "${task.title}" to ${ApprovalGroups.title(group)}');
+  }
+
+  /// Asks which category [task] belongs in (the Other group's swipe, and the
+  /// long press outside the category view) and moves it there.
+  Future<void> _pickGroup(Task task) async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text('Move "${task.title}" to'),
+        children: [
+          for (final group in ApprovalGroups.pickable)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(group),
+              child: Text(ApprovalGroups.title(group)),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _moveToGroup(task, picked);
+  }
+
   /// Approves [task] and routes it straight into the tool [tag] names
   /// (Wishlist/Research today — see [ApprovalQuickTag.targets]) by flipping
   /// that tool's membership flag on the task, exactly like the plain
@@ -284,8 +434,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   /// [_PendingTaskTileState._buildQuickTags].
   void _approveWithQuickTag(Task task, ApprovalQuickTag tag) {
     setState(() {
-      task.label = removeWaitingApprovalToken(task.label);
-      task.approvedAt = DateTime.now();
+      _liftGate(task);
       switch (tag.target) {
         case ApprovalQuickTag.wishlistTarget:
           task.isWish = true;
@@ -345,8 +494,8 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       );
   }
 
-  void _toggleGrouping() =>
-      setState(() => _groupByConversation = !_groupByConversation);
+  void _setGrouping(_Grouping grouping) =>
+      setState(() => _grouping = grouping);
 
   void _setSortMode(_SortMode mode) => setState(() => _sortMode = mode);
 
@@ -356,15 +505,18 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     });
   }
 
-  void _startSelection(Task task) => setState(() => _selectedUids.add(task.uid));
-
   void _toggleSelected(Task task) {
     setState(() {
       if (!_selectedUids.remove(task.uid)) _selectedUids.add(task.uid);
     });
   }
 
-  void _cancelSelection() => setState(_selectedUids.clear);
+  void _cancelSelection() => setState(() {
+        _selectedUids.clear();
+        _selectionMode = false;
+      });
+
+  void _enterSelectionMode() => setState(() => _selectionMode = true);
 
   void _startSelectionForGroup(List<Task> tasks) {
     setState(() {
@@ -390,18 +542,23 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     });
   }
 
-  /// Approves every selected item in one go, exactly like the single plain
-  /// Approve button (no due date is touched).
+  /// Approves every selected item in one go, each exactly like its own plain
+  /// Approve button (its category, with the routine's suggestion if any).
   void _approveSelection() {
     final targets =
         _pending().where((t) => _selectedUids.contains(t.uid)).toList();
     if (targets.isEmpty) return;
-    setState(() {
+    _batching = true;
+    try {
       for (final task in targets) {
-        task.label = removeWaitingApprovalToken(task.label);
-        task.approvedAt = DateTime.now();
+        _approve(task);
       }
+    } finally {
+      _batching = false;
+    }
+    setState(() {
       _selectedUids.clear();
+      _selectionMode = false;
     });
     _save();
     LogService.add(
@@ -425,6 +582,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         _tasks.remove(task);
       }
       _selectedUids.clear();
+      _selectionMode = false;
     });
     _save();
     LogService.add('WaitingApprovalPage._deny',
@@ -501,6 +659,11 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       context,
       title: 'Waiting for Approval',
       actions: [
+        IconButton(
+          tooltip: 'Select',
+          icon: const Icon(Icons.checklist),
+          onPressed: _enterSelectionMode,
+        ),
         PopupMenuButton<_SortMode>(
           tooltip: 'Sort',
           icon: const Icon(Icons.sort),
@@ -521,12 +684,25 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
             ),
           ],
         ),
-        IconButton(
-          tooltip:
-              _groupByConversation ? 'Show as one list' : 'Group by conversation',
-          icon: Icon(
-              _groupByConversation ? Icons.view_list : Icons.view_agenda_outlined),
-          onPressed: _toggleGrouping,
+        PopupMenuButton<_Grouping>(
+          tooltip: 'Group by',
+          icon: const Icon(Icons.view_agenda_outlined),
+          initialValue: _grouping,
+          onSelected: _setGrouping,
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: _Grouping.category,
+              child: Text('By category'),
+            ),
+            PopupMenuItem(
+              value: _Grouping.conversation,
+              child: Text('By conversation'),
+            ),
+            PopupMenuItem(
+              value: _Grouping.none,
+              child: Text('One list'),
+            ),
+          ],
         ),
       ],
     );
@@ -535,18 +711,89 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   Widget _buildTile(Task task) => _PendingTaskTile(
         key: ValueKey(task.uid),
         task: task,
+        group: _categoryOf(task),
+        draggable: _grouping == _Grouping.category,
         selecting: _selecting,
         selected: _selectedUids.contains(task.uid),
         expanded: _expandedUids.contains(task.uid),
         onApprove: () => _approve(task),
         onApproveWithDate: (tabIndex) => _approveWithDate(task, tabIndex),
         onApproveToWeekday: (weekday) => _approveToWeekday(task, weekday),
+        onApproveToState: (state) => _approveToState(task, state),
+        onApproveToGroceries: () => _approveToGroceries(task),
+        onApproveToFoodDiary: () => _approveToFoodDiary(task),
+        onPickGroup: () => _pickGroup(task),
         onApproveWithQuickTag: (tag) => _approveWithQuickTag(task, tag),
         onDeny: () => _deny(task),
         onToggleSelected: () => _toggleSelected(task),
-        onStartSelection: () => _startSelection(task),
         onToggleExpanded: () => _toggleExpanded(task),
       );
+
+  /// The category view: one section per non-empty category, in
+  /// [ApprovalGroups.all] order. Each section is a drop target, so a
+  /// long-press drag of an item onto another section re-sorts it.
+  Widget _buildCategoryList(List<Task> pending) {
+    final byGroup = <String, List<Task>>{};
+    for (final task in pending) {
+      byGroup.putIfAbsent(_categoryOf(task), () => <Task>[]).add(task);
+    }
+    final groups =
+        ApprovalGroups.all.where((g) => byGroup.containsKey(g)).toList();
+    // While dragging, every pickable category is offered as a target — an
+    // empty one shows as a slim header so an item can be moved into it.
+    return ListView(
+      children: [
+        for (final group in {...groups, ...ApprovalGroups.pickable}
+            .where((g) => byGroup.containsKey(g) || _dragging))
+          DragTarget<String>(
+            key: ValueKey('approval-group-$group'),
+            onWillAcceptWithDetails: (details) => true,
+            onAcceptWithDetails: (details) {
+              final task = pending.cast<Task?>().firstWhere(
+                  (t) => t?.uid == details.data,
+                  orElse: () => null);
+              if (task != null) _moveToGroup(task, group);
+            },
+            builder: (context, candidates, rejected) {
+              final items = byGroup[group] ?? const <Task>[];
+              final highlighted = candidates.isNotEmpty;
+              return Container(
+                color: highlighted
+                    ? Theme.of(context)
+                        .colorScheme
+                        .primaryContainer
+                        .withValues(alpha: 0.5)
+                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ApprovalGroupHeader(
+                      date: null,
+                      title: ApprovalGroups.title(group),
+                      count: items.length,
+                      selecting: _selecting,
+                      allSelected: items.isNotEmpty &&
+                          items.every((t) => _selectedUids.contains(t.uid)),
+                      onTap: _selecting && items.isNotEmpty
+                          ? () => _toggleGroupSelected(items)
+                          : null,
+                      onLongPress: _selecting || items.isEmpty
+                          ? null
+                          : () => _startSelectionForGroup(items),
+                    ),
+                    for (final task in items) _buildTile(task),
+                  ],
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  /// True while an item is being long-press dragged (category view), so the
+  /// empty categories show up as drop targets too.
+  bool _dragging = false;
 
   Widget _buildFlatList(List<Task> pending) => ListView.builder(
         itemCount: pending.length,
@@ -588,9 +835,19 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
           ? const Center(child: CircularProgressIndicator())
           : pending.isEmpty
               ? const Center(child: Text('Nothing waiting for approval'))
-              : _groupByConversation
-                  ? _buildGroupedList(pending)
-                  : _buildFlatList(pending),
+              : NotificationListener<_PendingDragNotification>(
+                  onNotification: (n) {
+                    if (_dragging != n.dragging) {
+                      setState(() => _dragging = n.dragging);
+                    }
+                    return true;
+                  },
+                  child: switch (_grouping) {
+                    _Grouping.category => _buildCategoryList(pending),
+                    _Grouping.conversation => _buildGroupedList(pending),
+                    _Grouping.none => _buildFlatList(pending),
+                  },
+                ),
     );
   }
 }
@@ -659,51 +916,78 @@ class _ApprovalGroupHeader extends StatelessWidget {
   }
 }
 
-/// A pending item rendered like a home-page task tile, with exactly the home
-/// list's swipe gestures: swiping toward the approve side offers Today/
-/// Tomorrow/Day After Tomorrow/Next Week/Next Month/Future shortcuts and
-/// approves the item onto today when the countdown runs out; swiping toward
-/// the deny side offers Deny plus Fri/Sat/Sun/Mon shortcuts (which approve
-/// the item onto that day) and denies it when the countdown runs out.
-/// Directions follow [Config.swipeLeftDelete] like the home list. The plain
-/// leading/trailing Approve/Deny icon buttons stay as one-tap alternatives
-/// that don't touch the due date.
+/// Bubbled up by a [_PendingTaskTile] when a long-press drag starts or ends,
+/// so the page can offer the empty categories as drop targets meanwhile.
+class _PendingDragNotification extends Notification {
+  final bool dragging;
+  const _PendingDragNotification(this.dragging);
+}
+
+/// A pending item rendered like a home-page task tile, with the home list's
+/// swipe gestures — and options that depend on the item's voice-inbox
+/// [group]:
+///
+/// * Todo / Migros / Lemmon (and food): the approve side offers Today/
+///   Tomorrow/Day After Tomorrow/Next Week/Next Month/Future; the deny side
+///   offers Deny plus Fri/Sat/Sun/Mon shortcuts (which approve the item onto
+///   that day).
+/// * Backlog / Research: the approve side offers Active / Next / Someday;
+///   the deny side just Deny.
+/// * Groceries: the approve side offers "Add to list"; the deny side Deny.
+/// * Other: swiping toward approve opens the category picker instead (the
+///   item stays waiting, in its new category); the deny side Deny.
+///
+/// Letting the countdown run out applies the routine's suggestion (shown as
+/// a "→ …" chip on the row) or the group's default — Today, Next, "Add to
+/// list" — on the approve side, Deny on the deny side. Directions follow
+/// [Config.swipeLeftDelete] like the home list. The plain leading/trailing
+/// Approve/Deny icon buttons stay as one-tap alternatives.
 ///
 /// Tapping the tile toggles an inline details panel (creation date, source
-/// conversation, Todoist sync info) whose very first row is a set of
-/// quick-tag buttons (Settings > Tasks > Approval quick tags —
-/// Wishlist/Research by default): tapping one approves the item straight
-/// into that tool instead of scrolling down to the plain Approve button.
-/// Long-pressing the tile starts multi-select, during which the leading
-/// icon becomes a checkbox, tapping toggles selection instead of expanding,
-/// and the swipe gestures are disabled.
+/// conversation, Todoist sync info, Obsidian project/transcript) whose very
+/// first row is a set of quick-tag buttons (Settings > Tasks > Approval quick
+/// tags — Wishlist/Research by default). In the category view a long press
+/// picks the item up to drag it onto another category's section ([draggable]);
+/// in the other views a long press opens the category picker. While the page
+/// is selecting, the leading icon becomes a checkbox, tapping toggles
+/// selection instead of expanding, and the swipe gestures are disabled.
 class _PendingTaskTile extends StatefulWidget {
   final Task task;
+  final String group;
+  final bool draggable;
   final bool selecting;
   final bool selected;
   final bool expanded;
   final VoidCallback onApprove;
   final void Function(int tabIndex) onApproveWithDate;
   final void Function(int weekday) onApproveToWeekday;
+  final void Function(String state) onApproveToState;
+  final VoidCallback onApproveToGroceries;
+  final VoidCallback onApproveToFoodDiary;
+  final VoidCallback onPickGroup;
   final void Function(ApprovalQuickTag tag) onApproveWithQuickTag;
   final VoidCallback onDeny;
   final VoidCallback onToggleSelected;
-  final VoidCallback onStartSelection;
   final VoidCallback onToggleExpanded;
 
   const _PendingTaskTile({
     Key? key,
     required this.task,
+    required this.group,
+    required this.draggable,
     required this.selecting,
     required this.selected,
     required this.expanded,
     required this.onApprove,
     required this.onApproveWithDate,
     required this.onApproveToWeekday,
+    required this.onApproveToState,
+    required this.onApproveToGroceries,
+    required this.onApproveToFoodDiary,
+    required this.onPickGroup,
     required this.onApproveWithQuickTag,
     required this.onDeny,
     required this.onToggleSelected,
-    required this.onStartSelection,
     required this.onToggleExpanded,
   }) : super(key: key);
 
@@ -718,6 +1002,10 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
   late final AnimationController _progressController;
   double _dragOffset = 0;
   bool _dragging = false;
+
+  /// Whether the deny side also offers the weekday shortcuts (which approve
+  /// the item onto that day as a dated task).
+  bool get _dated => ApprovalGroups.isDated(widget.group);
 
   @override
   void initState() {
@@ -735,6 +1023,21 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     super.dispose();
   }
 
+  /// What the approve side does when its countdown runs out.
+  void _applyApproveDefault() {
+    final group = widget.group;
+    if (ApprovalGroups.isStateful(group)) {
+      widget.onApproveToState(_defaultStateFor(widget.task));
+    } else if (group == ApprovalGroups.groceries) {
+      widget.onApproveToGroceries();
+    } else if (group == ApprovalGroups.food) {
+      widget.onApproveToFoodDiary();
+    } else {
+      widget
+          .onApproveWithDate(suggestedTabIndex(widget.task.approvalSuggestion) ?? 0);
+    }
+  }
+
   void _startOptions(_PendingSwipeMode mode) {
     setState(() => _mode = mode);
     _timer?.cancel();
@@ -745,14 +1048,23 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
       _progressController.stop();
       setState(() => _mode = null);
       if (mode == _PendingSwipeMode.approve) {
-        widget.onApproveWithDate(0); // Today
+        _applyApproveDefault();
       } else {
         widget.onDeny();
       }
     });
   }
 
-  void _startApproveOptions() => _startOptions(_PendingSwipeMode.approve);
+  void _startApproveOptions() {
+    // Other has no destination of its own yet: the approve swipe asks which
+    // category the item belongs in instead of approving it.
+    if (widget.group == ApprovalGroups.other) {
+      widget.onPickGroup();
+      return;
+    }
+    _startOptions(_PendingSwipeMode.approve);
+  }
+
   void _startDenyOptions() => _startOptions(_PendingSwipeMode.deny);
 
   void _closeOptions() {
@@ -761,19 +1073,9 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     if (mounted) setState(() => _mode = null);
   }
 
-  void _selectApprove(int tabIndex) {
+  void _select(VoidCallback action) {
     _closeOptions();
-    widget.onApproveWithDate(tabIndex);
-  }
-
-  void _selectDeny() {
-    _closeOptions();
-    widget.onDeny();
-  }
-
-  void _selectWeekday(int weekday) {
-    _closeOptions();
-    widget.onApproveToWeekday(weekday);
+    action();
   }
 
   void _handleTap() {
@@ -834,7 +1136,8 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
 
   /// Every detail linked to the item, shown when [widget.expanded] is true:
   /// the quick-tag buttons ([_buildQuickTags]) first, then creation date,
-  /// source conversation, Todoist sync info, note, due date/time window and
+  /// source conversation, Todoist sync info, the voice inbox's Obsidian
+  /// project/transcript/grocery category, note, due date/time window and
   /// every label tag — plus a link to [TaskDetailPage] for the rest
   /// (attachments, reminder, full journal history) so nothing about the
   /// task is more than one tap away from this row.
@@ -851,6 +1154,16 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     lines.add('From: ${_groupKeyFor(task)}');
     if (entry != null) {
       lines.add('Synced from Todoist: ${_formatDateTime(entry.syncedAt)}');
+    }
+    if (task.obsidianProject != null) {
+      lines.add('Project: ${task.obsidianProject}');
+    }
+    if (task.groceryCategory != null &&
+        widget.group == ApprovalGroups.groceries) {
+      lines.add('Category: ${task.groceryCategory}');
+    }
+    if (task.transcriptPath != null) {
+      lines.add('Transcript: ${task.transcriptPath}');
     }
     if (task.note.isNotEmpty) lines.add('Note: ${task.note}');
     if (task.dueDate != null) {
@@ -884,32 +1197,107 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
             ),
           ],
           const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              icon: const Icon(Icons.open_in_new, size: 16),
-              label: const Text('View full details'),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => TaskDetailPage(task: task),
-                  ),
-                );
-              },
-            ),
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.drive_file_move_outline, size: 16),
+                label: const Text('Move to category'),
+                onPressed: widget.onPickGroup,
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('View full details'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TaskDetailPage(task: task),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
+  /// The swipe panel's option buttons for [_mode] and the item's group.
+  List<Widget> _optionButtons() {
+    final task = widget.task;
+    Widget option(String label, VoidCallback onPressed,
+            {bool suggested = false}) =>
+        TextButton(
+          onPressed: () => _select(onPressed),
+          child: Text(
+            label,
+            style: suggested
+                ? const TextStyle(fontWeight: FontWeight.bold)
+                : null,
+          ),
+        );
+
+    if (_mode == _PendingSwipeMode.deny) {
+      return [
+        option('Deny', widget.onDeny),
+        if (_dated)
+          for (final o in _pendingSwipeWeekdayOptions)
+            option(o.label, () => widget.onApproveToWeekday(o.weekday)),
+      ];
+    }
+    final group = widget.group;
+    if (ApprovalGroups.isStateful(group)) {
+      final suggested = _defaultStateFor(task);
+      return [
+        for (final state in BacklogStates.all)
+          option(BacklogStates.title(state),
+              () => widget.onApproveToState(state),
+              suggested: state == suggested),
+      ];
+    }
+    if (group == ApprovalGroups.groceries) {
+      return [option('Add to list', widget.onApproveToGroceries)];
+    }
+    if (group == ApprovalGroups.food) {
+      return [option('Add to diary', widget.onApproveToFoodDiary)];
+    }
+    final suggestedTab = suggestedTabIndex(task.approvalSuggestion) ?? 0;
+    return [
+      for (var i = 0; i < Config.tabs.length; i++)
+        option(Config.tabs[i], () => widget.onApproveWithDate(i),
+            suggested: i == suggestedTab &&
+                task.approvalSuggestion != null),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final task = widget.task;
+    final suggestion = _suggestionLabel(task);
+    final theme = Theme.of(context);
+    final hasSubtitle = task.description.isNotEmpty || suggestion != null;
     final listTile = ListTile(
       title: LinkifiedText(task.title),
-      subtitle: task.description.isNotEmpty
-          ? LinkifiedText(task.description)
+      subtitle: hasSubtitle
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (task.description.isNotEmpty)
+                  LinkifiedText(task.description),
+                if (suggestion != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '→ $suggestion',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
+            )
           : null,
       isThreeLine: task.description.isNotEmpty,
       leading: widget.selecting
@@ -928,11 +1316,14 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
           : IconButton(
               icon: const Icon(Icons.cancel_outlined),
               tooltip: 'Deny',
-              color: Theme.of(context).colorScheme.error,
+              color: theme.colorScheme.error,
               onPressed: widget.onDeny,
             ),
       onTap: _handleTap,
-      onLongPress: widget.selecting ? null : widget.onStartSelection,
+      // In the category view the long press belongs to the drag (see
+      // below); elsewhere it opens the category picker.
+      onLongPress:
+          widget.selecting || widget.draggable ? null : widget.onPickGroup,
     );
 
     final stackTile = Stack(
@@ -941,7 +1332,7 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
         if (_mode != null)
           Positioned.fill(
             child: Container(
-              color: Theme.of(context).cardColor.withValues(alpha: 0.9),
+              color: theme.cardColor.withValues(alpha: 0.9),
               alignment: Alignment.centerRight,
               // The ListTile's own single-line height (56) leaves the
               // button row + progress bar column no slack, so a slightly
@@ -957,25 +1348,7 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
                   children: [
                     Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_mode == _PendingSwipeMode.approve)
-                          for (var i = 0; i < Config.tabs.length; i++)
-                            TextButton(
-                              onPressed: () => _selectApprove(i),
-                              child: Text(Config.tabs[i]),
-                            ),
-                        if (_mode == _PendingSwipeMode.deny) ...[
-                          TextButton(
-                            onPressed: _selectDeny,
-                            child: const Text('Deny'),
-                          ),
-                          for (final option in _pendingSwipeWeekdayOptions)
-                            TextButton(
-                              onPressed: () => _selectWeekday(option.weekday),
-                              child: Text(option.label),
-                            ),
-                        ],
-                      ],
+                      children: _optionButtons(),
                     ),
                     const SizedBox(height: 4),
                     SizedBox(
@@ -1056,8 +1429,11 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
           child: Container(
             alignment: alignment,
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Icon(Icons.check_circle_outline,
-                color: Theme.of(context).colorScheme.primary),
+            child: Icon(
+                widget.group == ApprovalGroups.other
+                    ? Icons.drive_file_move_outline
+                    : Icons.check_circle_outline,
+                color: theme.colorScheme.primary),
           ),
         );
       }
@@ -1114,14 +1490,35 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
       );
     }
 
-    return widget.selected
-        ? Container(
-            color: Theme.of(context)
-                .colorScheme
-                .primaryContainer
-                .withValues(alpha: 0.4),
-            child: content,
-          )
-        : content;
+    if (widget.selected) {
+      content = Container(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+        child: content,
+      );
+    }
+
+    if (!widget.draggable || widget.selecting) return content;
+    // Long press picks the item up; dropping it on another category's
+    // section moves it there (see _WaitingApprovalPageState._buildCategoryList).
+    return LongPressDraggable<String>(
+      data: task.uid,
+      axis: Axis.vertical,
+      onDragStarted: () => const _PendingDragNotification(true).dispatch(context),
+      onDragEnd: (_) => const _PendingDragNotification(false).dispatch(context),
+      feedback: Material(
+        elevation: 6,
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width - 32),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Text(task.title, style: theme.textTheme.titleMedium),
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.4, child: content),
+      child: content,
+    );
   }
 }

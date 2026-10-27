@@ -116,6 +116,13 @@ final List<SuiteRule> suiteRules = [
     'lib/models/todoist_sync_map_entry.dart', 'lib/ui/waiting_approval_page.dart', 'lib/ui/app_logs_page.dart',
   ], {'sync', 'home'}),
   SuiteRule(['lib/ui/remaining_time_text.dart'], {'sync', 'home', 'tools'}),
+  // The voice inbox: marker contract (sync), the approval page's groups and
+  // the home toggles (home), Groceries/Research/Wishlist (tools).
+  SuiteRule(['lib/utils/voice_inbox.dart'], {'sync', 'home', 'tools'}),
+  SuiteRule(['lib/models/home_contexts.dart'], {'home', 'sync'}),
+  SuiteRule(['lib/services/grocery_category_service.dart', 'lib/ui/groceries_page.dart'],
+      {'tools', 'sync', 'home'}),
+  SuiteRule(['lib/ui/obsidian_link_button.dart', 'lib/ui/research_page.dart'], {'tools', 'home'}),
   SuiteRule(['lib/services/share_intent_service.dart', 'lib/models/shared_payload.dart', 'lib/ui/quick_add_share_page.dart',
     'ShareActivity.kt', 'MainActivity.kt'], {'share', 'home'}),
   SuiteRule([

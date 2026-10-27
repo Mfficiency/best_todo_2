@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'models/home_contexts.dart';
 import 'models/streak_goal.dart';
 import 'models/streak_reminder.dart';
 import 'models/view_filter_rules.dart';
@@ -164,6 +165,8 @@ class Config {
     'f1_reminder',
     'compass',
     'pc_watcher',
+    'lemmon',
+    'groceries',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -185,6 +188,8 @@ class Config {
     'F1 Reminder',
     'Compass',
     'PC Watcher',
+    'Lemmon',
+    'Groceries',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -195,6 +200,10 @@ class Config {
   /// If true, the home page opens directly in the day-grouped schedule view
   /// instead of the per-tab list view.
   static bool startInScheduleView = false;
+
+  /// The drawer's Todo / MLR / Lemmon toggles for the home list (see
+  /// [HomeContexts]). Defaults to regular items only.
+  static HomeContexts homeContexts = HomeContexts.defaults;
 
   /// If true the app runs in *simple mode*: the home page is the plain task
   /// list and every optional feature (tools, streak, dice, schedule view, …)
@@ -235,6 +244,8 @@ class Config {
     'f1_reminder',
     'compass',
     'pc_watcher',
+    'lemmon',
+    'groceries',
   ];
 
   /// Human-readable labels for [featureKeys], index-aligned.
@@ -264,6 +275,8 @@ class Config {
     'F1 Reminder',
     'Compass',
     'PC Watcher',
+    'Lemmon',
+    'Groceries',
   ];
 
   /// One-line explanations for [featureKeys], index-aligned.
@@ -280,7 +293,7 @@ class Config {
     'Completion stats and trends',
     'Results of the latest CI test run',
     'A Monday-to-Friday 8:36-a-day plan with a Friday carryover line',
-    'The home screen, showing only tasks tagged "mlr" (hidden everywhere else)',
+    'The home screen, showing only tasks tagged "mlr" (hidden from home unless its toggle is on)',
     'Flame that grows for every day you finish a task',
     'Roll a random task and time it',
     'Calendar-style day-by-day view of the tasks',
@@ -293,6 +306,8 @@ class Config {
     'Texts a phone number 4 hours before every F1 race',
     'Simple compass with a Hold button to freeze the reading',
     'What the build PC built: log, failures, build times, APK sizes, pending',
+    'The home screen, showing only tasks tagged "lemmon"',
+    'Reusable grocery checklist, grouped by category',
   ];
 
   /// Per-feature switches used in full mode. Missing keys count as enabled.
@@ -726,6 +741,7 @@ class Config {
       'dateFormat': dateFormat,
       'defaultDelaySeconds': defaultDelaySeconds,
       'startInScheduleView': startInScheduleView,
+      'homeContexts': homeContexts.toJson(),
       'chronizeShowHourWheel': chronizeShowHourWheel,
       'weeklyHoursStartHour': weeklyHoursStartHour,
       'weeklyHoursEndHour': weeklyHoursEndHour,
@@ -816,6 +832,11 @@ class Config {
     defaultDelaySeconds = (data['defaultDelaySeconds'] as num?)?.toDouble() ??
         defaultDelaySeconds;
     startInScheduleView = data['startInScheduleView'] ?? startInScheduleView;
+    final savedContexts = data['homeContexts'];
+    if (savedContexts is Map) {
+      homeContexts =
+          HomeContexts.fromJson(Map<String, dynamic>.from(savedContexts));
+    }
     chronizeShowHourWheel =
         data['chronizeShowHourWheel'] ?? chronizeShowHourWheel;
     weeklyHoursStartHour =
