@@ -126,11 +126,14 @@ each optional, directly after it:
 
 - **Default unchanged:** the home list shows regular items; `mlr` items stay
   Worklist-only (the current standing rule's behavior); Lemmon items default to
-  hidden too (Open #1).
+  hidden too. Defaults: **Todo on, MLR off, Lemmon off**.
 - In the drawer, the **Home** entry folds out three toggle icons — **Todo**,
   **MLR**, **Lemmon** — each switching that group on/off in the home tabs and
   the schedule view, alone or in any combination ("Todo" = every item with
   neither the `mlr` nor the `lemmon` label). Shown items carry their label chip.
+- The toggle state is **remembered** across app restarts.
+- The toggles apply **only to the in-app home list** (tabs and schedule view) —
+  not the home-screen widget, the Wear sync or the Obsidian sync file.
 - Each context also keeps its **own list showing only that label**: Tools ▸
   Worklist (MLR, exists) and Tools ▸ **Lemmon** (new, another
   `HomePage(tagFilter: 'lemmon')` instance like Worklist).
@@ -204,9 +207,8 @@ each optional, directly after it:
 
 ## 11. Open items
 
-1. **Toggle defaults:** Todo on, MLR off, Lemmon off? Remembered across
-   restarts (assumed yes)? Do they also apply to the home-screen widget and the
-   Obsidian sync file, or only the in-app home list (assumed in-app only)?
+1. ~~Toggle defaults~~ — answered: Todo on, MLR off, Lemmon off; remembered;
+   in-app home list only (§5).
 2. **Drawer gesture:** tapping Home goes home today. Fold the toggles out with
    a small arrow on the Home row (tap the name = go home), or does tapping
    Home itself fold them out?
