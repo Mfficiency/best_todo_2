@@ -670,6 +670,15 @@ Todoist copy (pulled exactly once).
   (`_selectionMode`; "0 selected" until something is tapped); long-pressing a
   group header still selects the group.
 - The details panel adds `Project:`, `Category:` (groceries) and `Transcript:`.
+- **The expanded item is editable (0.2.125)** — `_PendingTaskEditor`, right
+  under the quick tags: Title, Description, Note (text fields owning their own
+  controllers, saved on focus loss and when the panel closes), Tags
+  (`LabelPickerField`, shown *without* the approval gate token, which is always
+  added back — editing tags can't approve by accident) and attachments
+  (`AttachmentsField`), so info can be added before the item reaches its final
+  list. The read-only `Note:` line and tag chips are gone (the fields show
+  them). `_onEdited` saves first and defers the redraw to after the frame when
+  the flush comes from the editor's dispose (mid-build).
 
 **Backlog/Research states** are the existing release tokens (`backlogStateOf`/
 `setBacklogState`): `release-next` = Active, `release-soon` = Next, none =

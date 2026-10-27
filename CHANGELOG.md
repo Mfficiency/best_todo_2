@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.125] - 2026-10-27
+- Waiting for Approval: tap an item to edit it before approving — title, description, note, tags and attachments, the same fields as a task on the home list. Edits are kept while it waits, and it lands in its final list with them.
+
 ## [0.2.124] - 2026-10-27
 - Voice inbox, part 2: approving a Backlog item now asks Claude to write its Obsidian page (or tap Create Obsidian page on an expanded wish), and the item gets an Open in Obsidian button once it's there. Moving a Research item to Active starts a research round: Claude asks a few questions, you answer them in the app (Answer questions, with the mic), and it writes the full research page into Obsidian. Set it up under Settings → Claude Routine → Voice inbox routine (needs Todoist sync on).
 

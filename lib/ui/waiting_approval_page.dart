@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../config.dart';
 import '../models/approval_quick_tag.dart';
@@ -16,10 +17,11 @@ import '../services/log_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/todoist_sync_service.dart';
 import '../services/voice_inbox_service.dart';
-import '../utils/label_style.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import '../utils/voice_inbox.dart';
+import 'attachments_field.dart';
+import 'label_picker.dart';
 import 'subpage_app_bar.dart';
 import 'task_detail_page.dart';
 
@@ -545,6 +547,26 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   void _setSortMode(_SortMode mode) => setState(() => _sortMode = mode);
 
+  /// An inline edit in an expanded item's editor (see [_PendingTaskEditor]):
+  /// redraw (the row shows the new title) and persist.
+  ///
+  /// The save comes first and doesn't need the page: the editor's last flush
+  /// can arrive while it's being disposed (the panel closing, or the page
+  /// being popped with a field still focused) — mid-build, when a
+  /// synchronous setState would throw.
+  void _onEdited() {
+    _save();
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      setState(() {});
+    }
+  }
+
   void _toggleExpanded(Task task) {
     setState(() {
       if (!_expandedUids.remove(task.uid)) _expandedUids.add(task.uid);
@@ -773,6 +795,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         onDeny: () => _deny(task),
         onToggleSelected: () => _toggleSelected(task),
         onToggleExpanded: () => _toggleExpanded(task),
+        onEdited: _onEdited,
       );
 
   /// The category view: one section per non-empty category, in
@@ -1016,6 +1039,9 @@ class _PendingTaskTile extends StatefulWidget {
   final VoidCallback onToggleSelected;
   final VoidCallback onToggleExpanded;
 
+  /// Called after an inline edit in the expanded editor, to persist it.
+  final VoidCallback onEdited;
+
   const _PendingTaskTile({
     Key? key,
     required this.task,
@@ -1035,6 +1061,7 @@ class _PendingTaskTile extends StatefulWidget {
     required this.onDeny,
     required this.onToggleSelected,
     required this.onToggleExpanded,
+    required this.onEdited,
   }) : super(key: key);
 
   @override
@@ -1156,37 +1183,14 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     );
   }
 
-  /// One label chip, colored like every other tag chip in the app
-  /// ([TaskTile._tag], [TaskLabelLine]) — the approval gate token itself
-  /// included, since it's still one of the task's real labels.
-  Widget _tag(BuildContext context, String text) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = protectedChipColorFor(text);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: color?.withValues(alpha: 0.16) ?? scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(8),
-        border: color == null ? null : Border.all(color: color),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          color: color ?? scheme.onSecondaryContainer,
-          fontWeight: color == null ? null : FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
   /// Every detail linked to the item, shown when [widget.expanded] is true:
-  /// the quick-tag buttons ([_buildQuickTags]) first, then creation date,
-  /// source conversation, Todoist sync info, the voice inbox's Obsidian
-  /// project/transcript/grocery category, note, due date/time window and
-  /// every label tag — plus a link to [TaskDetailPage] for the rest
-  /// (attachments, reminder, full journal history) so nothing about the
-  /// task is more than one tap away from this row.
+  /// the quick-tag buttons ([_buildQuickTags]) first, then the inline editor
+  /// ([_PendingTaskEditor]: title, description, note, tags, attachments — so
+  /// info can be added before the item goes to its final list), then
+  /// creation date, source conversation, Todoist sync info, the voice inbox's
+  /// Obsidian project/transcript/grocery category and due date/time window —
+  /// plus "Move to category" and a link to [TaskDetailPage] for the rest
+  /// (reminder, full journal history).
   Widget _buildDetails(BuildContext context) {
     final task = widget.task;
     final theme = Theme.of(context);
@@ -1211,7 +1215,6 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     if (task.transcriptPath != null) {
       lines.add('Transcript: ${task.transcriptPath}');
     }
-    if (task.note.isNotEmpty) lines.add('Note: ${task.note}');
     if (task.dueDate != null) {
       lines.add('Due: ${task.dueDate!.toLocal().toString().split(' ')[0]}');
     }
@@ -1226,22 +1229,15 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     if (task.attachments.isNotEmpty) {
       lines.add('Attachments: ${task.attachments.length}');
     }
-    final tags = splitLabelTokens(task.label);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildQuickTags(context),
+          _PendingTaskEditor(task: task, onEdited: widget.onEdited),
+          const SizedBox(height: 8),
           for (final line in lines) Text(line, style: detailStyle),
-          if (tags.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [for (final tag in tags) _tag(context, tag)],
-            ),
-          ],
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -1568,3 +1564,98 @@ class _PendingTaskTileState extends State<_PendingTaskTile>
     );
   }
 }
+
+/// The expanded pending item's editor — the same fields a home task's
+/// expanded tile edits (title, description, note, tags, attachments), so an
+/// item can be completed before it's approved into its final list. Owns its
+/// controllers. Text fields persist when they lose focus (and when the panel
+/// closes); tags and attachments right away. The approval gate token is kept
+/// out of the tag field and always put back, so editing tags can never
+/// approve an item by accident.
+class _PendingTaskEditor extends StatefulWidget {
+  final Task task;
+  final VoidCallback onEdited;
+
+  const _PendingTaskEditor({required this.task, required this.onEdited});
+
+  @override
+  State<_PendingTaskEditor> createState() => _PendingTaskEditorState();
+}
+
+class _PendingTaskEditorState extends State<_PendingTaskEditor> {
+  late final TextEditingController _title =
+      TextEditingController(text: widget.task.title);
+  late final TextEditingController _description =
+      TextEditingController(text: widget.task.description);
+  late final TextEditingController _note =
+      TextEditingController(text: widget.task.note);
+  bool _dirty = false;
+
+  @override
+  void dispose() {
+    // Closing the panel while a field still has focus: keep that edit too.
+    if (_dirty) widget.onEdited();
+    _title.dispose();
+    _description.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  void _flush() {
+    if (!_dirty) return;
+    _dirty = false;
+    widget.onEdited();
+  }
+
+  Widget _field(TextEditingController controller, String label,
+      void Function(String) apply,
+      {bool multiline = false}) {
+    return Focus(
+      onFocusChange: (hasFocus) {
+        if (!hasFocus) _flush();
+      },
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+        keyboardType: multiline ? TextInputType.multiline : null,
+        maxLines: multiline ? null : 1,
+        onChanged: (v) {
+          apply(v);
+          _dirty = true;
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final task = widget.task;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _field(_title, 'Title', (v) => task.title = v),
+        _field(_description, 'Description', (v) => task.description = v,
+            multiline: true),
+        _field(_note, 'Note', (v) => task.note = v, multiline: true),
+        LabelPickerField(
+          value: removeWaitingApprovalToken(task.label),
+          fieldLabel: 'Tags',
+          onChanged: (v) {
+            setState(() =>
+                task.label = addLabelToken(v, waitingApprovalToken));
+            widget.onEdited();
+          },
+        ),
+        AttachmentsField(
+          taskUid: task.uid,
+          attachments: task.attachments,
+          onChanged: (v) {
+            setState(() => task.attachments = v);
+            widget.onEdited();
+          },
+        ),
+      ],
+    );
+  }
+}
+

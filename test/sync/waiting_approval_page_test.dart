@@ -359,7 +359,8 @@ void main() {
     expect(find.textContaining('Created: 2026-01-15 09:30'), findsOneWidget);
     expect(find.textContaining('From: Trip planning'), findsOneWidget);
 
-    await tester.tap(find.text('From Todoist'));
+    // The row's title (the expanded editor's Title field repeats it).
+    await tester.tap(find.text('From Todoist').first);
     await tester.pump();
 
     expect(find.textContaining('Created:'), findsNothing);
@@ -387,8 +388,8 @@ void main() {
   });
 
   testWidgets(
-      'expanding a pending item shows its note, due date and every label '
-      'tag', (tester) async {
+      'expanding a pending item shows its note, due date and tags — the '
+      'approval gate kept out of the editable tags', (tester) async {
     await pumpPending(
       tester,
       tasks: [
@@ -402,14 +403,14 @@ void main() {
       marker: 'From Todoist',
     );
 
-    expect(find.textContaining('Note:'), findsNothing);
+    expect(find.text('Call the vet first'), findsNothing);
 
     await tester.tap(find.text('From Todoist'));
     await tester.pump();
 
-    expect(find.textContaining('Note: Call the vet first'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Call the vet first'), findsOneWidget);
     expect(find.textContaining('Due: 2026-03-01'), findsOneWidget);
-    expect(find.text(waitingApprovalToken), findsOneWidget);
+    expect(find.text(waitingApprovalToken), findsNothing);
     expect(find.text('urgent'), findsOneWidget);
   });
 
@@ -1014,6 +1015,43 @@ void main() {
     final saved = await readJsonList(tester, 'tasks.json');
     expect(saved.single['obsidianRequestedAt'], isNotNull);
     expect(saved.single['isWish'], isTrue);
+  });
+
+  testWidgets(
+      'an expanded pending item is editable — title, description, note — and '
+      'the edits are saved while it keeps waiting for approval',
+      (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(
+          title: 'Fix bike',
+          label: '$waitingApprovalToken bike',
+          approvalGroup: 'todo',
+        ),
+      ],
+      marker: 'Fix bike',
+    );
+    await tester.tap(find.text('Fix bike'));
+    await tester.pump();
+
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Fix bike'), 'Fix bike brakes');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Description'), 'Rear one squeaks');
+    await tester.enterText(find.widgetWithText(TextField, 'Note'), 'Shop on Main');
+    // Leaving the field (here: closing the panel) saves the edit.
+    await tester.tap(find.text('Fix bike brakes').first);
+    await tester.pump();
+    await settleWrites(tester);
+
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['title'], 'Fix bike brakes');
+    expect(saved.single['description'], 'Rear one squeaks');
+    expect(saved.single['note'], 'Shop on Main');
+    expect(saved.single['label'], contains('approval'));
+    expect(saved.single['label'], contains('bike'));
+    expect(find.text('Fix bike brakes'), findsOneWidget);
   });
 }
 
