@@ -156,6 +156,18 @@ each new transcript.
 - **Leftover:** the vault Action step is no longer needed for sorting. Don't
   add it unless this hourly task is switched off, or every item arrives twice.
 
+**Two lessons from the switch-over (same day).**
+- **Overlapping runs:** a run with the old prompt (12:33 UTC) and the first
+  run with the new one (12:37) overlapped. The new one read the state task
+  before the old one had saved, and would have re-created the same items in
+  new wording; it was stopped before it wrote anything. Never start a run
+  while another is still going. Their only lock is the state task.
+- **State saved wrapped in text:** the old run also wrapped the state JSON in
+  extra text. The prompt now reads a JSON object out of surrounding text and
+  always writes back pure JSON. STEP 6 (give pending items without `[Group:]`
+  a category) now runs on *every* run, not only when there were new
+  recordings, so items made by the old prompt get sorted too.
+
 ### The old routine's prompt (verbatim, before 28 Oct 2026)
 
 ```
