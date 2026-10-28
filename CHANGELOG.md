@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.130] - 2026-10-28
+- Waiting for Approval syncs with Todoist by itself now: opening it pulls the latest (a thin bar shows while it does), and you can pull down to sync again. What you approved or denied on the approvals website or in Todoist shows up right away instead of only after leaving the app. Items that were approved on the website before your phone had this update are fixed on the next sync, and ones denied there go to the Deleted bin instead of staying stuck.
+
 ## [0.2.129] - 2026-10-28
 - Waiting for Approval: every category and every date/conversation header now has its own approve (green ✓, left) and deny (red ✗, right) button, so a whole group is handled in one click — in the app and on the approvals website. Approving applies each item's suggestion; denying shows the usual Undo for a few seconds.
 

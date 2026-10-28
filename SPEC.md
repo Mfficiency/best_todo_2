@@ -1083,9 +1083,31 @@ missing locally.
 - **Deny:** the website deletes the task on Todoist. Step 5 of a sync now sends a
   vanished task that still carries the gate to the Deleted bin (`deletedAt`,
   recoverable) instead of marking it done.
-- **Order of updates:** the phone has to run 0.2.126+ before the site is used. An
-  older build pulls the approval but keeps the item pending, and the newer build
-  won't re-read an edit it already pulled.
+- **Repairs for older builds (0.2.130):** an approval pulled by a build older than
+  0.2.126 left the item pending, with fingerprints already matching the remote. Step 3
+  therefore checks `approvedRemotely` on every run: the item is still gated here,
+  while the remote trailer has `approvedAt` and the remote labels don't carry the
+  gate. That case is pulled as a remote change even when neither fingerprint moved,
+  and it wins over a local edit of the pending item, so the gate is never pushed
+  back. A denial seen by an older build left a gated item `isDone` without a
+  mapping, stuck in Waiting for Approval. After step 5, such items go to the bin
+  with the other denials.
+- **The app's page syncs itself (0.2.130).** Previously the phone pulled only on
+  app quit and on the home list's pull-down, so the page showed the state from
+  before anything approved elsewhere.
+  - **When:** `WaitingApprovalPage` (app mode) runs `_syncFromTodoist` after its
+    first load and on pull-down (`RefreshIndicator`; the empty state is a
+    scrollable `ListView` so pull-down works there too).
+  - **While it runs:** a `LinearProgressIndicator` (key `approval-syncing`) shows
+    and an `AbsorbPointer` blocks taps. `_save` only sets `_dirtyDuringSync`, so
+    the page never writes between the sync's read and its write.
+  - **After it ends:** the page's own changes since the start (a swipe countdown
+    firing) are merged over the synced list with
+    `ApprovalsSyncCoordinator.mergeOver` and saved.
+  - **Failure:** a failed manual sync shows "Todoist sync failed: …".
+  - **Leaving early:** when you leave the page mid-sync, the home page reloads once
+    on return and again after `TodoistSyncService.whenIdle()`. Otherwise its list,
+    missing what the sync pulled, would be saved over it.
 
 ### 4.3 Home page UX
 

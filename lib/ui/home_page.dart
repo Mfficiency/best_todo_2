@@ -3403,7 +3403,16 @@ class _HomePageState extends State<HomePage>
                       MaterialPageRoute(
                           builder: (_) => const WaitingApprovalPage()),
                     )
-                    .then((_) => _reloadTasksFromStorage());
+                    .then((_) async {
+                  await _reloadTasksFromStorage();
+                  // Left while the page's Todoist sync was still running:
+                  // reload once more when it has saved, or this page's list
+                  // (missing what it pulled) would be saved over it.
+                  if (TodoistSyncService.instance.syncing.value) {
+                    await TodoistSyncService.instance.whenIdle();
+                    if (mounted) await _reloadTasksFromStorage();
+                  }
+                });
               },
             ),
             if (Config.isFeatureEnabled('food_diary'))

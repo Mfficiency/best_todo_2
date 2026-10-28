@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../config.dart';
 import '../models/approval_quick_tag.dart';
+import '../models/sync_log_entry.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
 import '../services/approval_quick_tag_service.dart';
@@ -247,6 +248,58 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       _tasks = tasks;
       _loading = false;
     });
+    // The website syncs through its own coordinator.
+    if (widget.site == null) unawaited(_syncFromTodoist());
+  }
+
+  /// True while [_syncFromTodoist] runs: the list takes no input and
+  /// [_save] only notes that something changed.
+  bool _syncing = false;
+  bool _dirtyDuringSync = false;
+  Future<void>? _lastSave;
+
+  /// Pulls from Todoist when the page opens and on pull-down, so what was
+  /// approved, denied or added elsewhere (the approvals website, Todoist,
+  /// the voice inbox) shows here without leaving the app (SPEC §4.2k).
+  ///
+  /// The sync reads the whole list at its start and writes it at its end,
+  /// so the page must not write in between: taps are blocked, and anything
+  /// that changes anyway (a running swipe countdown) is merged over the
+  /// synced list afterwards ([ApprovalsSyncCoordinator.mergeOver]) and
+  /// saved then.
+  Future<void> _syncFromTodoist({bool manual = false}) async {
+    if (widget.site != null ||
+        _syncing ||
+        !Config.todoistSyncEnabled ||
+        Config.todoistApiToken.trim().isEmpty) {
+      return;
+    }
+    setState(() => _syncing = true);
+    await _lastSave;
+    final base = ApprovalsSyncCoordinator.snapshot(_tasks);
+    _dirtyDuringSync = false;
+    SyncLogEntry? entry;
+    try {
+      entry = await TodoistSyncService.instance.syncNow(
+          trigger: manual ? 'approval page refresh' : 'approval page');
+    } catch (_) {}
+    final merged = ApprovalsSyncCoordinator.mergeOver(
+      stored: await _repository.loadItems(),
+      page: _tasks,
+      baseline: base,
+    );
+    _tasks = merged;
+    _syncing = false;
+    if (_dirtyDuringSync) {
+      _dirtyDuringSync = false;
+      await _save();
+    }
+    if (!mounted) return;
+    setState(() {});
+    if (manual && entry != null && !entry.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Todoist sync failed: ${entry.message}')));
+    }
   }
 
   /// Persists the list and redraws the home-screen widget from it — the
@@ -289,9 +342,17 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       site.sync.requestSoon();
       return;
     }
-    await _repository.saveItems(_tasks);
-    await TaskWidgetService.sync(_tasks);
-    await FoodDiaryWidgetService.sync(_tasks);
+    if (_syncing) {
+      _dirtyDuringSync = true;
+      return;
+    }
+    final write = () async {
+      await _repository.saveItems(_tasks);
+      await TaskWidgetService.sync(_tasks);
+      await FoodDiaryWidgetService.sync(_tasks);
+    }();
+    _lastSave = write;
+    await write;
   }
 
   List<Task> _pending() {
@@ -1034,6 +1095,24 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         onDenyAll: _selecting ? null : () => _denyItems(items),
       );
 
+  /// In the app: pull-down syncs with Todoist ([_syncFromTodoist]); while a
+  /// sync runs a progress bar shows and the list takes no taps.
+  Widget _withRefresh(Widget list) {
+    if (widget.site != null) return list;
+    return Column(
+      children: [
+        if (_syncing)
+          const LinearProgressIndicator(key: Key('approval-syncing')),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => _syncFromTodoist(manual: true),
+            child: AbsorbPointer(absorbing: _syncing, child: list),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pending = _loading ? <Task>[] : _sortedPending(_pending());
@@ -1055,8 +1134,12 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
             ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : pending.isEmpty
-              ? const Center(child: Text('Nothing waiting for approval'))
+          : _withRefresh(pending.isEmpty
+              // Scrollable, so pull-down works on an empty list too.
+              ? ListView(children: const [
+                  SizedBox(height: 200),
+                  Center(child: Text('Nothing waiting for approval')),
+                ])
               : NotificationListener<_PendingDragNotification>(
                   onNotification: (n) {
                     if (_dragging != n.dragging) {
@@ -1069,7 +1152,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
                     _Grouping.conversation => _buildGroupedList(pending),
                     _Grouping.none => _buildFlatList(pending),
                   },
-                ),
+                )),
     );
   }
 }

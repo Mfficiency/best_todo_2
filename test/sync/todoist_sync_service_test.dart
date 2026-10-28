@@ -516,6 +516,48 @@ void main() {
       expect(bin.single.isDone, isFalse);
     });
 
+    test('an approval whose edit was already pulled (by an older build that '
+        'kept the item pending) is still taken', () async {
+      final id = fake.seedTask(
+          content: 'Buy milk', labels: [waitingApprovalToken]);
+      await TodoistSyncService.instance.syncNow();
+      final uid = (await ItemRepository.instance.loadItems()).single.uid;
+      // The label went first: pulled, item kept pending (fingerprints now
+      // match the remote) — what a pre-0.2.126 build did with the approval.
+      fake.tasks[id]!['labels'] = <String>[];
+      await TodoistSyncService.instance.syncNow();
+      expect(hasWaitingApprovalToken(
+              (await ItemRepository.instance.loadItems()).single.label),
+          isTrue);
+      // Only the trailer says approvedAt — no fingerprint change.
+      fake.tasks[id]!['description'] = TodoistMetadataCodec.build(
+          visible: '',
+          meta: {'uid': uid, 'approvedAt': '2026-10-28T10:00:00.000Z'});
+      await TodoistSyncService.instance.syncNow();
+
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(task.label), isFalse);
+      // And nothing pushes the gate back afterwards.
+      await TodoistSyncService.instance.syncNow();
+      expect(fake.tasks[id]!['labels'], isEmpty);
+    });
+
+    test('a pending item an older build marked done when it vanished goes to '
+        'the bin', () async {
+      await StorageService().saveTaskList([
+        Task(title: 'Denied on the website', label: waitingApprovalToken)
+          ..isDone = true,
+        Task(title: 'Normal done task')..isDone = true,
+      ]);
+      await TodoistSyncService.instance.syncNow();
+
+      final tasks = await ItemRepository.instance.loadItems();
+      expect(tasks.map((t) => t.title), isNot(contains('Denied on the website')));
+      final bin = await ItemRepository.instance.loadBinItems();
+      expect(bin.single.title, 'Denied on the website');
+      expect(bin.single.isDone, isFalse);
+    });
+
     test('approving here writes approvedAt into the trailer', () async {
       final id = fake.seedTask(
           content: 'Buy milk', labels: [waitingApprovalToken]);

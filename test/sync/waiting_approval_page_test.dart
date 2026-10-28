@@ -4,11 +4,15 @@ import 'dart:io';
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
+import 'package:besttodo/services/todoist_api_client.dart';
+import 'package:besttodo/services/todoist_sync_service.dart';
 import 'package:besttodo/services/voice_inbox_service.dart';
 import 'package:besttodo/ui/waiting_approval_page.dart';
 import 'package:besttodo/utils/label_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 class _FakePathProvider extends PathProviderPlatform {
@@ -60,6 +64,18 @@ void main() {
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
       await tester.pump();
     }
+  }
+
+  /// Waits out the Todoist sync the page runs when it opens (only when
+  /// sync is configured) — the list takes no taps meanwhile.
+  Future<void> waitForPageSync(WidgetTester tester) async {
+    final syncing = find.byKey(const Key('approval-syncing'));
+    for (var i = 0; i < 400 && syncing.evaluate().isNotEmpty; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+    expect(syncing, findsNothing);
   }
 
   /// Picks [option] ('By category' / 'By conversation' / 'One list') from
@@ -987,7 +1003,12 @@ void main() {
     Config.voiceInboxRoutineToken = 'r';
     final fakeService = _FakeVoiceInbox();
     VoiceInboxService.instance = fakeService;
+    // The page syncs when it opens; this Todoist answers at once.
+    TodoistSyncService.instance.apiClientFactory = (token) => TodoistApiClient(
+        apiToken: token,
+        client: MockClient((_) async => http.Response('Unauthorized', 401)));
     addTearDown(() {
+      TodoistSyncService.resetForTest();
       Config.todoistSyncEnabled = false;
       Config.todoistApiToken = '';
       Config.voiceInboxRoutineUrl = '';
@@ -1005,6 +1026,7 @@ void main() {
       ],
       marker: 'Big idea',
     );
+    await waitForPageSync(tester);
     await tester.drag(find.text('Big idea'), const Offset(300, 0));
     await tester.pump();
     await tester.tap(find.text('Next'));
@@ -1184,6 +1206,94 @@ void main() {
     expect(DateTime.parse(milk['dueDate'] as String).day, tomorrow.day);
     final dentist = tasks.firstWhere((t) => t['title'] == 'Book dentist');
     expect(dentist['label'], contains('approval'));
+  });
+
+  group('syncing with Todoist from the page', () {
+    late List<Map<String, dynamic>> remoteTasks;
+    var failAuth = false;
+
+    setUp(() {
+      remoteTasks = [];
+      failAuth = false;
+      TodoistSyncService.resetForTest();
+      TodoistSyncService.instance.apiClientFactory = (token) =>
+          TodoistApiClient(
+            apiToken: token,
+            client: MockClient((request) async {
+              if (failAuth) return http.Response('Unauthorized', 401);
+              final path = request.url.path;
+              final results = path == '/api/v1/tasks' ? remoteTasks : [];
+              return http.Response(
+                jsonEncode({'results': results, 'next_cursor': null}),
+                200,
+                headers: const {
+                  'content-type': 'application/json; charset=utf-8'
+                },
+              );
+            }),
+          );
+      Config.todoistSyncEnabled = true;
+      Config.todoistApiToken = 'test-token';
+    });
+
+    tearDown(() {
+      Config.todoistSyncEnabled = false;
+      Config.todoistApiToken = '';
+      TodoistSyncService.resetForTest();
+    });
+
+    Future<void> pumpUntilFound(WidgetTester tester, Finder finder) async {
+      for (var i = 0; i < 400 && finder.evaluate().isEmpty; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)));
+        await tester.pump();
+      }
+    }
+
+    testWidgets('opening the page pulls new items from Todoist',
+        (tester) async {
+      remoteTasks.add({
+        'id': '1',
+        'content': 'From the voice inbox',
+        'description': '[Group: todo]',
+        'labels': ['Waiting_for_approval'],
+        'project_id': null,
+        'due': null,
+      });
+      await pumpPending(
+        tester,
+        tasks: [Task(title: 'Already here', label: waitingApprovalToken)],
+        marker: 'Already here',
+      );
+      final pulled = find.text('From the voice inbox');
+      await pumpUntilFound(tester, pulled);
+      expect(pulled, findsOneWidget);
+      await pumpUntilFound(tester, find.byKey(const Key('approval-syncing')));
+      expect(find.byKey(const Key('approval-syncing')), findsNothing);
+      expect(find.text('Already here'), findsOneWidget);
+    });
+
+    testWidgets('pull-down syncs again and reports a failed sync',
+        (tester) async {
+      await pumpPending(
+        tester,
+        tasks: [Task(title: 'Already here', label: waitingApprovalToken)],
+        marker: 'Already here',
+      );
+      await waitForPageSync(tester);
+      failAuth = true;
+      await tester.fling(
+          find.text('Already here'), const Offset(0, 400), 1000);
+      await tester.pump();
+      // The indicator snaps into place, then calls onRefresh.
+      await tester.pump(const Duration(seconds: 1));
+      final failed = find.textContaining('Todoist sync failed');
+      await pumpUntilFound(tester, failed);
+      expect(failed, findsOneWidget);
+      // Nothing was lost.
+      expect(find.text('Already here'), findsOneWidget);
+      await tester.pumpAndSettle();
+    });
   });
 }
 

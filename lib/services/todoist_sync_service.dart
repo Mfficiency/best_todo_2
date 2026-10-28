@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -216,6 +217,23 @@ class TodoistSyncService {
     }
     final pick = same ?? other;
     return pick == null ? null : Duration(milliseconds: pick.durationMs);
+  }
+
+  /// Completes once no sync (or first-import background phase) is running —
+  /// for a page that must reload *after* a sync it didn't start has saved.
+  Future<void> whenIdle() async {
+    if (!syncing.value) return;
+    final done = Completer<void>();
+    void listener() {
+      if (!syncing.value && !done.isCompleted) done.complete();
+    }
+
+    syncing.addListener(listener);
+    try {
+      await done.future;
+    } finally {
+      syncing.removeListener(listener);
+    }
   }
 
   /// Runs one sync pass. Returns the recorded entry, or null when sync is
@@ -646,8 +664,20 @@ class TodoistSyncService {
       );
       final localChanged = localFp != entry.localFingerprint;
       final remoteChanged = remoteFp != entry.remoteFingerprint;
+      // Approved on another device while still pending here: the approval
+      // wins over a local edit of the pending item, and is taken even when
+      // its edit was pulled before — by a build that didn't know approvedAt
+      // yet and kept the item pending (SPEC §4.2k).
+      final approvedRemotely = hasWaitingApprovalToken(task.label) &&
+          _approvedElsewhere(
+                TodoistMetadataCodec.parse(
+                  remoteTask['description'] as String? ?? '',
+                ).meta,
+                _labelsFromRemote(remoteTask),
+              ) !=
+              null;
 
-      if (localChanged) {
+      if (localChanged && !approvedRemotely) {
         final todoistProjectId = await _todoistProjectFor(
           client,
           task,
@@ -684,7 +714,7 @@ class TodoistSyncService {
         );
         entry.syncedAt = now;
         changeCount++;
-      } else if (remoteChanged) {
+      } else if (remoteChanged || approvedRemotely) {
         _applyRemoteToLocal(task, remoteTask, todoistToLocalProject);
         entry.localFingerprint = _localFingerprint(task);
         entry.remoteFingerprint = remoteFp;
@@ -775,6 +805,23 @@ class TodoistSyncService {
       }
       removedUids.add(entry.localUid);
       changeCount++;
+    }
+    // Denied elsewhere before this build: an older one marked the vanished
+    // pending item done (and dropped its mapping), leaving it stuck in
+    // Waiting for Approval. Same as above — to the bin.
+    for (final task in allLocal) {
+      if (task.isDone &&
+          task.deletedAt == null &&
+          hasWaitingApprovalToken(task.label) &&
+          !mapByUidStart.containsKey(task.uid) &&
+          !deniedElsewhere.contains(task)) {
+        task.isDone = false;
+        task.completedAt = null;
+        task.deletedAt = now;
+        task.autoDeleted = false;
+        deniedElsewhere.add(task);
+        changeCount++;
+      }
     }
     if (deniedElsewhere.isNotEmpty) {
       allLocal.removeWhere(deniedElsewhere.contains);
