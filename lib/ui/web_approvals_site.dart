@@ -56,11 +56,12 @@ class WebApprovalsSiteApp extends StatelessWidget {
 }
 
 /// Categories approved only in the app: their approval does more than the
-/// website can (SPEC §4.2k) — Food/Groceries become local-only items, a
-/// Backlog approval fires the Obsidian-page routine, Research's flag never
-/// syncs.
+/// website can (SPEC §4.2k) — Food/Groceries become local-only items,
+/// Research's flag never syncs. Backlog is listed: its approval syncs (the
+/// Wishlist project, the state label, `approvedAt`); only the Obsidian-page
+/// routine isn't fired, and the phone's Wishlist offers "Create Obsidian
+/// page" for it.
 const Set<String> hiddenOnSite = {
-  ApprovalGroups.backlog,
   ApprovalGroups.research,
   ApprovalGroups.groceries,
   ApprovalGroups.food,

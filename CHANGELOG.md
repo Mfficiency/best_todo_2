@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.132] - 2026-10-28
+- Approvals website: Backlog items now show up there too, so the website lists the same items as the app and Todoist instead of nearly nothing. Approving one there puts it in your Wishlist as usual; to get its Obsidian page, tap **Create Obsidian page** on the item in the app's Wishlist. Groceries and Research items still have to be approved in the app (the footer says how many are waiting there).
+
 ## [0.2.131] - 2026-10-28
 - Home filters: next to Todo, MLR and Lemmon there is now a **Backlog** switch (drawer → arrow next to Home). Turn it on to see your Backlog (wishlist) items in the home list too; it's off by default, so nothing changes until you switch it on.
 

@@ -7,6 +7,7 @@ import 'package:besttodo/services/web_approvals/approvals_sync.dart';
 import 'package:besttodo/services/web_approvals/token_vault.dart';
 import 'package:besttodo/services/web_approvals/vault_crypto.dart';
 import 'package:besttodo/ui/web_approvals_site.dart';
+import 'package:besttodo/utils/voice_inbox.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -163,6 +164,20 @@ void main() {
       await expectLater(
           vault.unlock(password), throwsA(isA<VaultWipedException>()));
     });
+  });
+
+  test('the site lists Backlog; app-only categories stay hidden', () {
+    // Backlog's approval syncs (Wishlist project, state label, approvedAt);
+    // the voice-inbox routine fills Todoist mostly with Backlog items, so
+    // hiding it left the site nearly empty next to the phone and Todoist.
+    expect(hiddenOnSite, isNot(contains(ApprovalGroups.backlog)));
+    expect(
+        hiddenOnSite,
+        containsAll(<String>[
+          ApprovalGroups.research,
+          ApprovalGroups.groceries,
+          ApprovalGroups.food,
+        ]));
   });
 
   group('ApprovalsSyncCoordinator.mergeOver', () {

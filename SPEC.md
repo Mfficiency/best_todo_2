@@ -1046,14 +1046,19 @@ without the label wait on the phone only.
 
 **What the site shows.** `WaitingApprovalPage(site: ApprovalSiteOptions(...))`, with
 its own app bar: sync status/Sync now, then a menu with Lock and Forget this browser.
-These categories are hidden (`hiddenOnSite`), and a footer says "N more in … —
+These categories are hidden (`hiddenOnSite`, `web_approvals_site.dart`), and a footer says "N more in … —
 approve those in the app":
 - **Food and Groceries** become local-only items, and the next sync deletes them on
   Todoist. In the tab's memory they would simply be lost. On the site
   `_turnIntoFoodEntry` does nothing, so food items stay pending for the phone.
-- **Backlog** approvals fire the Obsidian-page routine, which is configured on the
-  phone.
 - **Research**'s flag doesn't sync.
+
+**Backlog is listed (0.2.132).** It used to be hidden as well, which left the site
+nearly empty, because the voice-inbox routine sorts most items into Backlog. Its
+approval syncs: the item moves to the Wishlist project, its Active/Next/Someday
+state travels as a label, and `approvedAt` goes in the trailer. The only thing the
+site can't do is fire the Obsidian-page routine, which is configured on the phone.
+The phone's Wishlist offers **Create Obsidian page** for the item instead.
 
 **Saves and syncs never interleave** (`ApprovalsSyncCoordinator`,
 `lib/services/web_approvals/approvals_sync.dart`). The page and the sync both
