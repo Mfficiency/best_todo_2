@@ -18,6 +18,7 @@ import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
+import 'ui/web_approvals_site.dart';
 import 'ui/web_data_choice_page.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
@@ -158,6 +159,13 @@ Future<void> _initStep(String label, Future<void> Function() step) async {
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
+  // The approvals website (SPEC §4.2k) is its own small app: none of the
+  // phone's startup (backups, alarms, widgets, updates) runs there.
+  if (kIsWeb && Config.webApprovalsSite) {
+    await _initStep('config', Config.load);
+    runApp(const WebApprovalsSiteApp());
+    return;
+  }
   // The full backup (Download/BestToDo/Backups, before every update) first:
   // it tells a new install (nothing in SharedPreferences yet) to offer a
   // restore after the first frame.

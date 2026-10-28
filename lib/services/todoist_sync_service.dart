@@ -755,16 +755,33 @@ class TodoistSyncService {
     // A task's disappearance from the active list is Todoist's only
     // signal here — it can mean completed *or* deleted, and treating it as
     // "done" rather than "gone" never loses data on that ambiguity.
+    // An item still waiting for approval here was denied elsewhere (the
+    // approvals website deletes it on Todoist, SPEC §4.2k): it goes to the
+    // Deleted bin like a Deny on this device — still recoverable.
+    final deniedElsewhere = <Task>[];
     for (final entry in entriesAtStart) {
       if (handledTodoistIds.contains(entry.todoistId)) continue;
       if (removedUids.contains(entry.localUid)) continue;
       if (remoteById.containsKey(entry.todoistId)) continue;
       final task = syncableByUid[entry.localUid];
       if (task == null) continue;
-      task.isDone = true;
-      task.completedAt ??= now;
+      if (hasWaitingApprovalToken(task.label)) {
+        task.deletedAt = now;
+        task.autoDeleted = false;
+        deniedElsewhere.add(task);
+      } else {
+        task.isDone = true;
+        task.completedAt ??= now;
+      }
       removedUids.add(entry.localUid);
       changeCount++;
+    }
+    if (deniedElsewhere.isNotEmpty) {
+      allLocal.removeWhere(deniedElsewhere.contains);
+      final binned = await ItemRepository.instance.loadBinItems();
+      binned.insertAll(0, deniedElsewhere);
+      if (binned.length > 100) binned.removeRange(100, binned.length);
+      await ItemRepository.instance.saveBinItems(binned);
     }
 
     _taskMap.removeWhere((e) => removedUids.contains(e.localUid));
@@ -935,7 +952,12 @@ class TodoistSyncService {
     // app last pushed) — otherwise a label added/removed via Todoist's own
     // label UI, which never touches the description, is invisible here.
     task.label = _labelsFromRemote(remoteTask);
-    if (stillPending) {
+    final approvedElsewhere = _approvedElsewhere(meta, task.label);
+    if (stillPending && approvedElsewhere != null) {
+      // Approved on another device (SPEC §4.2k): the gate goes, the rest of
+      // the approval (date, labels, project) arrived with the edit.
+      task.approvedAt = approvedElsewhere;
+    } else if (stillPending) {
       // The remote label array is the source of truth, but the approval gate
       // is a local decision: a pending item stays pending.
       task.label = addLabelToken(task.label, waitingApprovalToken);
@@ -988,7 +1010,13 @@ class TodoistSyncService {
   /// recording time) or, without one, its creation time. `[Suggest: verify]`
   /// (or `new`) means the routine couldn't match it to an existing meal —
   /// the entry gets the blue "please verify" dot.
+  ///
+  /// Never on the approvals website (SPEC §4.2k): its list lives only in the
+  /// tab's memory, so a food entry made there would be gone with the tab
+  /// while the next sync deletes the Todoist copy — the item stays pending
+  /// (hidden there) for the phone to pull.
   void _turnIntoFoodEntry(Task task) {
+    if (Config.webApprovalsSite) return;
     task.label = removeWaitingApprovalToken(task.label);
     task.isEatingHabit = true;
     task.isWish = false;
@@ -1070,11 +1098,16 @@ class TodoistSyncService {
         : _idOf(remoteTask['project_id']);
     final mapped =
         remoteProjectId == null ? null : todoistToLocalProject[remoteProjectId];
+    final remoteLabels = _labelsFromRemote(remoteTask);
+    final approvedElsewhere = _approvedElsewhere(meta, remoteLabels);
     final task = Task(
       title: remoteTask['content'] as String? ?? '',
       description: visibleDescription,
       note: meta?['note'] as String? ?? '',
-      label: addLabelToken(_labelsFromRemote(remoteTask), waitingApprovalToken),
+      label: approvedElsewhere != null || !_gatesNewTasks(remoteLabels)
+          ? remoteLabels
+          : addLabelToken(remoteLabels, waitingApprovalToken),
+      approvedAt: approvedElsewhere,
       createdAt: _remoteCreatedAt(remoteTask) ?? DateTime.now(),
       origin: TaskChangeSource.sync,
       pendingSourceTitle: markerSourceTitle ??
@@ -1088,8 +1121,29 @@ class TodoistSyncService {
     );
     _applySortingMarkers(task, markers);
     _applyRemoteDue(task, remoteTask['due']);
-    if (task.approvalGroup == ApprovalGroups.food) _turnIntoFoodEntry(task);
+    if (hasWaitingApprovalToken(task.label) &&
+        task.approvalGroup == ApprovalGroups.food) {
+      _turnIntoFoodEntry(task);
+    }
     return task;
+  }
+
+  /// Whether a Todoist task this device has never seen starts out waiting
+  /// for approval. In the app: every one (the gate is a local decision, see
+  /// [_taskFromRemote]). On the approvals website (SPEC §4.2k) — a fresh
+  /// browser has never seen *any* task — only those carrying the gate as a
+  /// real Todoist label, i.e. the voice-inbox routine's items.
+  bool _gatesNewTasks(String remoteLabels) =>
+      !Config.webApprovalsSite || hasWaitingApprovalToken(remoteLabels);
+
+  /// When the task was approved on another device (the approvals website,
+  /// or another phone): the `approvedAt` the approving side writes into the
+  /// metadata trailer, while Todoist no longer carries the gate label. Null
+  /// when it hasn't been — or still carries the label.
+  DateTime? _approvedElsewhere(Map<String, dynamic>? meta, String remoteLabels) {
+    final raw = meta?['approvedAt'];
+    if (raw is! String || hasWaitingApprovalToken(remoteLabels)) return null;
+    return DateTime.tryParse(raw)?.toLocal();
   }
 
   /// The task's own creation time on Todoist's side, when the API includes
@@ -1202,6 +1256,10 @@ class TodoistSyncService {
       'kanbanStatus': task.kanbanStatus,
       'kanbanStageLabel': ProjectService.stageLabel(task.kanbanStatus),
       if (task.createdAt != null) 'createdAt': task.createdAt!.toIso8601String(),
+      // How another device tells an approval apart from a gate that was only
+      // ever local (see [_approvedElsewhere]).
+      if (task.approvedAt != null && !hasWaitingApprovalToken(task.label))
+        'approvedAt': task.approvedAt!.toUtc().toIso8601String(),
     };
     final description =
         TodoistMetadataCodec.build(visible: task.description, meta: meta);

@@ -141,6 +141,14 @@ file is the short operational guide.
   watch commands are queued natively and applied by the home page, never written to
   tasks.json from Kotlin). `build.ps1 release` builds it after the phone (`WEAR=0` skips) and
   publishes `wear-v…` releases. Pure watch logic: `./gradlew -p wear test`.
+- Approvals website (SPEC §4.2k): Waiting for Approval only, password-locked, at
+  `https://mfficiency.github.io/best_todo_2/`. `deploy-web.yml` builds it on every push to
+  `dev` (`flutter build web --dart-define=WEB_APPROVALS_SITE=true` +
+  `dart run tool/harden_approvals_site.dart`) and force-pushes it to `gh-pages`. The
+  Todoist token lives only in the browser, AES-GCM-encrypted with the person's password.
+  Code: `lib/ui/web_approvals_site.dart`, `lib/services/web_approvals/`. Never put a
+  secret in the build. Keep `ApprovalsSyncCoordinator` between the page and the sync,
+  or a stale save makes the next sync delete tasks on Todoist.
 - Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
   build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 

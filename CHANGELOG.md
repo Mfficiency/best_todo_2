@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.126] - 2026-10-28
+- Approvals website: approve or deny your Waiting for Approval items from any computer's browser, no install. Open https://mfficiency.github.io/best_todo_2/, paste your Todoist API token once and choose a password (12+ characters). The token stays only in that browser, encrypted with your password; after that the site just asks for the password. It locks itself after 15 minutes without use (or with Lock in the menu), and 10 wrong passwords in a row make the browser forget the token. Todo, Migros, Lemmon and Other items can be approved there; Backlog, Research, Groceries and Food stay for the app. Approvals and denials made on the website show up in the app at its next Todoist sync (a denied item goes to the Deleted bin).
+
 ## [0.2.125] - 2026-10-27
 - Waiting for Approval: tap an item to edit it before approving — title, description, note, tags and attachments, the same fields as a task on the home list. Edits are kept while it waits, and it lands in its final list with them.
 

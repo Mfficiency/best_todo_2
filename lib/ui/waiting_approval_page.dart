@@ -17,6 +17,7 @@ import '../services/log_service.dart';
 import '../services/task_widget_service.dart';
 import '../services/todoist_sync_service.dart';
 import '../services/voice_inbox_service.dart';
+import '../services/web_approvals/approvals_sync.dart';
 import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import '../utils/voice_inbox.dart';
@@ -127,11 +128,31 @@ String _groupKeyFor(Task task) {
 /// [waitingApprovalToken] and hidden from every other list (home tabs,
 /// wishlist, project boards; see `ItemViews`) — until approved or denied.
 ///
+/// How [WaitingApprovalPage] runs as the approvals website (SPEC §4.2k):
+/// every save goes through [sync] (merged over the stored list under its
+/// lock, then a debounced Todoist sync), the page reloads after each sync,
+/// [hiddenGroups] are neither listed nor offered as a destination, and the
+/// app bar has no drawer/back buttons but [actions] instead.
+class ApprovalSiteOptions {
+  final ApprovalsSyncCoordinator sync;
+  final Set<String> hiddenGroups;
+  final List<Widget> actions;
+
+  const ApprovalSiteOptions({
+    required this.sync,
+    this.hiddenGroups = const {},
+    this.actions = const [],
+  });
+}
+
 /// Self-contained like [WishlistPage]: loads and saves the whole task list
 /// on its own, so the home page just reloads from storage when coming back
 /// (see `HomePage._reloadTasksFromStorage`).
 class WaitingApprovalPage extends StatefulWidget {
-  const WaitingApprovalPage({Key? key}) : super(key: key);
+  /// Set on the approvals website (SPEC §4.2k) — absent in the app.
+  final ApprovalSiteOptions? site;
+
+  const WaitingApprovalPage({Key? key, this.site}) : super(key: key);
 
   @override
   State<WaitingApprovalPage> createState() => _WaitingApprovalPageState();
@@ -171,14 +192,51 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   bool get _selecting => _selectionMode || _selectedUids.isNotEmpty;
 
+  /// Site mode: what the page last loaded/saved (see
+  /// [ApprovalsSyncCoordinator.mergeOver]).
+  Map<String, String> _baseline = const {};
+
   @override
   void initState() {
     super.initState();
+    widget.site?.sync.revision.addListener(_absorbSync);
     _load();
+  }
+
+  @override
+  void dispose() {
+    widget.site?.sync.revision.removeListener(_absorbSync);
+    super.dispose();
+  }
+
+  /// Site mode: a sync finished — take what it pulled (keeping any change
+  /// made on the page meanwhile).
+  void _absorbSync() {
+    final site = widget.site;
+    if (site == null || _loading) return;
+    unawaited(site.sync.exclusive(() => _mergeSave(onlyIfChanged: true)));
+  }
+
+  /// Site mode: the page's changes over the stored list, saved; the merged
+  /// list becomes the page's list and baseline.
+  Future<void> _mergeSave({bool onlyIfChanged = false}) async {
+    final stored = await _repository.loadItems();
+    final merged = ApprovalsSyncCoordinator.mergeOver(
+      stored: stored,
+      page: _tasks,
+      baseline: _baseline,
+    );
+    final changed = !(onlyIfChanged &&
+        mapEquals(ApprovalsSyncCoordinator.snapshot(_tasks), _baseline));
+    if (changed) await _repository.saveItems(merged);
+    _baseline = ApprovalsSyncCoordinator.snapshot(merged);
+    if (!mounted) return;
+    setState(() => _tasks = merged);
   }
 
   Future<void> _load() async {
     final tasks = await _repository.loadItems();
+    _baseline = ApprovalsSyncCoordinator.snapshot(tasks);
     // Self-contained like the task list load: the quick-tag buttons at the
     // top of the expanded details panel need this loaded before they can
     // render, and this page is the only place they're shown.
@@ -225,15 +283,53 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   Future<void> _save() async {
     if (_batching) return;
+    final site = widget.site;
+    if (site != null) {
+      await site.sync.exclusive(_mergeSave);
+      site.sync.requestSoon();
+      return;
+    }
     await _repository.saveItems(_tasks);
     await TaskWidgetService.sync(_tasks);
     await FoodDiaryWidgetService.sync(_tasks);
   }
 
-  List<Task> _pending() => ItemViews.waitingApproval(
-        _tasks,
-        rules: Config.viewFilterRules[ViewFilterRules.approval],
-      );
+  List<Task> _pending() {
+    final pending = ItemViews.waitingApproval(
+      _tasks,
+      rules: Config.viewFilterRules[ViewFilterRules.approval],
+    );
+    final hidden = widget.site?.hiddenGroups ?? const <String>{};
+    if (hidden.isEmpty) return pending;
+    return pending.where((t) => !hidden.contains(_categoryOf(t))).toList();
+  }
+
+  /// Site mode: "2 more in Groceries, Research — approve those in the app",
+  /// or null when no item is hidden.
+  String? _hiddenNote() {
+    final hidden = widget.site?.hiddenGroups ?? const <String>{};
+    if (hidden.isEmpty) return null;
+    final counts = <String, int>{};
+    for (final t in ItemViews.waitingApproval(_tasks,
+        rules: Config.viewFilterRules[ViewFilterRules.approval])) {
+      final group = _categoryOf(t);
+      if (hidden.contains(group)) counts[group] = (counts[group] ?? 0) + 1;
+    }
+    if (counts.isEmpty) return null;
+    final total = counts.values.fold<int>(0, (a, b) => a + b);
+    final names = ApprovalGroups.all
+        .where(counts.containsKey)
+        .map(ApprovalGroups.title)
+        .join(', ');
+    return '$total more in $names — approve ${total == 1 ? 'it' : 'those'} '
+        'in the app';
+  }
+
+  /// The categories an item can be moved into here.
+  List<String> get _pickableGroups {
+    final hidden = widget.site?.hiddenGroups ?? const <String>{};
+    return ApprovalGroups.pickable.where((g) => !hidden.contains(g)).toList();
+  }
 
   /// [Task.createdAt] for sort comparisons, with a fixed epoch fallback for
   /// items that predate the field — they sort as the oldest of the bunch
@@ -462,7 +558,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
       builder: (context) => SimpleDialog(
         title: Text('Move "${task.title}" to'),
         children: [
-          for (final group in ApprovalGroups.pickable)
+          for (final group in _pickableGroups)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop(group),
               child: Text(ApprovalGroups.title(group)),
@@ -515,10 +611,15 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     timer = Timer(Config.delayDuration, () async {
       task.deletedAt = DateTime.now();
       task.autoDeleted = false;
-      final binned = await _repository.loadBinItems();
-      binned.insert(0, task);
-      if (binned.length > 100) binned.removeLast();
-      await _repository.saveBinItems(binned);
+      try {
+        final binned = await _repository.loadBinItems();
+        binned.insert(0, task);
+        if (binned.length > 100) binned.removeLast();
+        await _repository.saveBinItems(binned);
+      } catch (_) {
+        // The approvals website has no file storage (no bin); the deny
+        // still reaches Todoist through the sync.
+      }
       messenger.hideCurrentSnackBar();
     });
 
@@ -658,16 +759,20 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
     late Timer timer;
     timer = Timer(Config.delayDuration, () async {
-      final binned = await _repository.loadBinItems();
-      for (final task in originalIndices.keys) {
-        task.deletedAt = DateTime.now();
-        task.autoDeleted = false;
-        binned.insert(0, task);
+      try {
+        final binned = await _repository.loadBinItems();
+        for (final task in originalIndices.keys) {
+          task.deletedAt = DateTime.now();
+          task.autoDeleted = false;
+          binned.insert(0, task);
+        }
+        while (binned.length > 100) {
+          binned.removeLast();
+        }
+        await _repository.saveBinItems(binned);
+      } catch (_) {
+        // No bin on the approvals website — see [_deny].
       }
-      while (binned.length > 100) {
-        binned.removeLast();
-      }
-      await _repository.saveBinItems(binned);
       messenger.hideCurrentSnackBar();
     });
 
@@ -723,10 +828,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         ],
       );
     }
-    return buildSubpageAppBar(
-      context,
-      title: 'Waiting for Approval',
-      actions: [
+    final actions = <Widget>[
         IconButton(
           tooltip: 'Select',
           icon: const Icon(Icons.checklist),
@@ -772,7 +874,19 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
             ),
           ],
         ),
-      ],
+        ...?widget.site?.actions,
+    ];
+    if (widget.site != null) {
+      return AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text('Waiting for Approval'),
+        actions: actions,
+      );
+    }
+    return buildSubpageAppBar(
+      context,
+      title: 'Waiting for Approval',
+      actions: actions,
     );
   }
 
@@ -812,7 +926,7 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     // empty one shows as a slim header so an item can be moved into it.
     return ListView(
       children: [
-        for (final group in {...groups, ...ApprovalGroups.pickable}
+        for (final group in {...groups, ..._pickableGroups}
             .where((g) => byGroup.containsKey(g) || _dragging))
           DragTarget<String>(
             key: ValueKey('approval-group-$group'),
@@ -898,8 +1012,22 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
   @override
   Widget build(BuildContext context) {
     final pending = _loading ? <Task>[] : _sortedPending(_pending());
+    final hiddenNote = _loading ? null : _hiddenNote();
     return Scaffold(
       appBar: _buildAppBar(context),
+      bottomNavigationBar: hiddenNote == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  hiddenNote,
+                  key: const Key('approval-hidden-note'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : pending.isEmpty

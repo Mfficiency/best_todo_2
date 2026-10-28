@@ -115,6 +115,10 @@ final List<SuiteRule> suiteRules = [
     'lib/services/todoist_api_client.dart', 'lib/services/todoist_metadata_codec.dart', 'lib/models/sync_log_entry.dart',
     'lib/models/todoist_sync_map_entry.dart', 'lib/ui/waiting_approval_page.dart', 'lib/ui/app_logs_page.dart',
   ], {'sync', 'home'}),
+  // The approvals website (SPEC §4.2k): vault, merge/lock coordinator, lock
+  // screen — all in test/sync/web_approvals_test.dart.
+  SuiteRule(['lib/services/web_approvals/', 'lib/ui/web_approvals_site.dart',
+    'lib/ui/web_data_choice_page.dart', 'tool/harden_approvals_site.dart'], {'sync'}),
   SuiteRule(['lib/ui/remaining_time_text.dart'], {'sync', 'home', 'tools'}),
   // The voice inbox: marker contract (sync), the approval page's groups and
   // the home toggles (home), Groceries/Research/Wishlist (tools).

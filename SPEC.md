@@ -953,6 +953,113 @@ step stopped at one real consumer instead of rewriting every view's tile widget 
 config — `TaskTile` (Home) and the other bespoke tiles (Wishlist, Alarms, Countdown, Food
 Diary, Waiting for Approval, Projects) are unchanged.
 
+### 4.2k Approvals website — Waiting for Approval in a browser (0.2.126)
+
+A password-locked website that shows only Waiting for Approval, so items can be
+approved from a computer where the app isn't installed. It is a separate entry point
+of the same Flutter code: `flutter build web --dart-define=WEB_APPROVALS_SITE=true`
+(`Config.webApprovalsSite`), and `main()` runs `WebApprovalsSiteApp`
+(`lib/ui/web_approvals_site.dart`) straight after `ensureInitialized` + `Config.load`.
+None of the phone's startup runs there (backup, alarms, widgets, updates).
+`.github/workflows/deploy-web.yml` builds it on every push to `dev`
+(`--no-web-resources-cdn --pwa-strategy=none --base-href /<repo>/`), runs
+`tool/harden_approvals_site.dart` and force-pushes the output as a one-commit
+`gh-pages` branch. GitHub Pages serves it at `https://<owner>.github.io/<repo>/`.
+It uses a branch instead of the Actions Pages deploy because that deploy's
+`github-pages` environment only accepts the default branch (`main`). `gh-pages` is on
+`prune_old_branches.mjs`'s keep list.
+
+**Security model.** The site is public static files with no data and no secret in
+them. The only secret is the Todoist API token. The person types it once per browser,
+and it stays in that browser's localStorage, encrypted (`TokenVault`,
+`lib/services/web_approvals/token_vault.dart`):
+- **Encryption:** PBKDF2-HMAC-SHA256 with 600 000 iterations and a random 16-byte salt
+  derives an AES-256-GCM key (non-extractable) from a password of at least 12
+  characters. A random 12-byte IV is used. All of it is the browser's own Web Crypto
+  (`vault_crypto_web.dart`, `dart:js_interop` behind a conditional import; the stub
+  throws off the web, and tests pass a fake `VaultCrypto`).
+- **Stored record:** `web_approvals_vault` = `{v, kdf, iterations, salt, iv,
+  ciphertext}`. The plain token is never written anywhere. A wrong password fails
+  GCM's tag check.
+- **Wrong passwords:** the first 2 failures are free. From the 3rd, each attempt waits
+  5 s, then twice as long each time, up to 5 min (`web_approvals_locked_until`). The
+  10th failure in a row deletes the vault (`VaultWipedException`), and the person
+  sets the site up again. The right password resets the count. *Forget this browser*
+  (on the lock screen and in the page menu) deletes it on demand.
+- **Locking:** after unlocking, the task list lives only in the tab's memory
+  (`Config.webRealData`, the same in-memory store as a Chrome dev run;
+  `loadRealTodoistData` in `real_data_loader.dart` is shared with
+  `WebDataChoicePage`). **Lock** in the menu, or 15 minutes without a pointer or key
+  event, pushes any pending sync and then reloads the tab, which wipes the token and
+  the tasks from memory.
+- **Browser hardening:** the browser shows "Leave site?" while a sync is running. The
+  page refuses to render inside a frame (`isFramed`), because `frame-ancestors`
+  can't be set from a `<meta>` tag.
+- **`tool/harden_approvals_site.dart`** adds, in `<meta>` tags because Pages can't
+  send headers:
+  - a Content-Security-Policy: scripts only from the site itself plus
+    `wasm-unsafe-eval` for CanvasKit; network only to the site, `api.todoist.com`
+    and `fonts.gstatic.com` (Flutter's Roboto fallback); no objects, no forms,
+    `base-uri 'self'`;
+  - `referrer no-referrer`;
+  - `robots noindex` plus a `robots.txt`.
+- **No content injection:** task text is drawn on the canvas, never inserted as HTML.
+
+**The queue is the Todoist label.** In the app the approval gate is a local decision:
+every Todoist task the phone has never seen gets `Waiting_for_approval` locally
+(§4.2e). A fresh browser has never seen any task, so on the site
+`TodoistSyncService._gatesNewTasks` gates only tasks whose Todoist labels carry the
+token (the voice-inbox routine sets it, §4.2j). Tasks typed straight into Todoist
+without the label wait on the phone only.
+
+**What the site shows.** `WaitingApprovalPage(site: ApprovalSiteOptions(...))`, with
+its own app bar: sync status/Sync now, then a menu with Lock and Forget this browser.
+These categories are hidden (`hiddenOnSite`), and a footer says "N more in … —
+approve those in the app":
+- **Food and Groceries** become local-only items, and the next sync deletes them on
+  Todoist. In the tab's memory they would simply be lost. On the site
+  `_turnIntoFoodEntry` does nothing, so food items stay pending for the phone.
+- **Backlog** approvals fire the Obsidian-page routine, which is configured on the
+  phone.
+- **Research**'s flag doesn't sync.
+
+**Saves and syncs never interleave** (`ApprovalsSyncCoordinator`,
+`lib/services/web_approvals/approvals_sync.dart`). The page and the sync both
+read-modify-write the whole list. A page save landing over a sync would drop the
+tasks that sync pulled, and step 1 of the *next* sync deletes a mapped task that's
+missing locally.
+- **One lock:** `exclusive` is a single lock. Every page save takes it, and so does
+  every sync.
+- **Merged saves:** the page saves `mergeOver(stored, page, baseline)`, which applies
+  only the uids whose JSON changed since the page's last load or save, and drops the
+  uids the page removed. Unchanged tasks keep the page's own instances, so an open
+  editor stays attached.
+- **Removed remotely wins:** a task the sync removed stays removed even if the page
+  touched it.
+- **When syncs run:** after each save, debounced to 6 s, which is longer than a
+  deny's undo window, so an undone deny never reaches Todoist. Also every 2 minutes,
+  on the cloud button, and before a lock. After each sync, `revision` makes the page
+  merge in what was pulled.
+- **No bin on the web:** the deny's Deleted-bin write is wrapped, because the web has
+  no file storage.
+
+**Approved/denied elsewhere (the phone side).**
+- **Approve:** the approving side writes `approvedAt` (UTC) into the metadata
+  trailer (`_buildRemotePayload`, only once the gate is gone). The trailer is outside
+  both fingerprints, so this causes no extra pushes. `_approvedElsewhere(meta,
+  remoteLabels)` is set when the trailer has `approvedAt` and Todoist no longer has
+  the gate label.
+  - `_applyRemoteToLocal` then lifts the local gate instead of keeping the item
+    pending. A label removed by hand in Todoist, without `approvedAt`, still keeps it
+    pending, as before.
+  - `_taskFromRemote` doesn't gate such a task at all.
+- **Deny:** the website deletes the task on Todoist. Step 5 of a sync now sends a
+  vanished task that still carries the gate to the Deleted bin (`deletedAt`,
+  recoverable) instead of marking it done.
+- **Order of updates:** the phone has to run 0.2.126+ before the site is used. An
+  older build pulls the approval but keeps the item pending, and the newer build
+  won't re-read an edit it already pulled.
+
 ### 4.3 Home page UX
 
 Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next

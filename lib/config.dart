@@ -25,6 +25,11 @@ class Config {
   /// persisted — every browser run asks again.
   static bool webRealData = false;
 
+  /// The build is the approvals website (SPEC §4.2k): `flutter build web
+  /// --dart-define=WEB_APPROVALS_SITE=true`, made by `deploy-web.yml`.
+  static const bool webApprovalsSite =
+      bool.fromEnvironment('WEB_APPROVALS_SITE');
+
   /// Whether the dev/demo sample data (tasks, projects, stats, timers, food
   /// diary...) gets seeded: dev builds only, and never on top of a Chrome
   /// session that loaded the real Todoist data.
