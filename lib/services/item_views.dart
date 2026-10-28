@@ -5,6 +5,7 @@ import '../models/view_filter_rules.dart';
 import '../utils/date_utils.dart';
 import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
+import '../utils/voice_inbox.dart';
 
 /// The views layer: every surface that shows items — home tabs, wishlist,
 /// project boards, project cards — is a *query over the one task list*,
@@ -85,6 +86,32 @@ class ItemViews {
       default:
         return isFuture;
     }
+  }
+
+  /// The home tab a wish sits in while the Backlog toggle is on: placed by
+  /// its backlog state ([backlogStateOf]) rather than its due date — Active
+  /// → Today, Next → Next Week, Someday → Future — so Todo and Backlog items
+  /// read as one plan. Null for every other task (and with the toggle off),
+  /// which [inHomeBucket] places by date as usual.
+  static int? backlogTabIndex(Task task, HomeContexts? contexts) {
+    if (contexts == null || !contexts.backlog || !task.isWish) return null;
+    switch (backlogStateOf(task)) {
+      case BacklogStates.active:
+        return 0;
+      case BacklogStates.next:
+        return 3;
+      default:
+        return futureTabIndex;
+    }
+  }
+
+  /// The backlog state of a wish moved to home tab [tabIndex], the inverse
+  /// of [backlogTabIndex]: Today → Active, Tomorrow to Next Week → Next,
+  /// Next Month and Future → Someday.
+  static String backlogStateForTab(int tabIndex) {
+    if (tabIndex <= 0) return BacklogStates.active;
+    if (tabIndex <= 3) return BacklogStates.next;
+    return BacklogStates.someday;
   }
 
   /// Synthetic view-membership tokens for [task] — layered onto its real
@@ -274,6 +301,7 @@ class ItemViews {
 
   /// The tasks of home tab [tabIndex], sorted like the home list (open
   /// first, then by ranking). [where] adds an extra predicate (search).
+  /// With the Backlog toggle on, wishes go by state ([backlogTabIndex]).
   /// [rules] is the configured Home view filter, see [passesFilterRules].
   /// [includeWorklistItems] is true only for the Worklist tool's own
   /// instance of the home page, which reuses this same bucketing — see
@@ -294,7 +322,9 @@ class ItemViews {
                 rules: rules,
                 includeWorklistItems: includeWorklistItems,
                 contexts: contexts) &&
-            inHomeBucket(t, tabIndex, today))
+            (backlogTabIndex(t, contexts) ??
+                    (inHomeBucket(t, tabIndex, today) ? tabIndex : -1)) ==
+                tabIndex)
         .toList();
     sortTasks(list);
     return list;

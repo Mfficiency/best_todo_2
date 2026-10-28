@@ -45,7 +45,12 @@ void main() {
           Task(title: 'Regular item', dueDate: now),
           Task(title: 'Migros item', label: worklistToken, dueDate: now),
           Task(title: 'Lemmon item', label: lemmonToken, dueDate: now),
-          Task(title: 'Backlog item', isWish: true, dueDate: now),
+          // Active, so with the Backlog toggle on it sits on Today by state.
+          Task(
+              title: 'Backlog item',
+              label: releaseNextToken,
+              isWish: true,
+              dueDate: now),
         ]));
     await tester.pumpWidget(MaterialApp(home: home));
     final markerFinder = find.text(marker);

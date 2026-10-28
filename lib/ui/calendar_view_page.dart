@@ -45,6 +45,11 @@ class ScheduleView extends StatefulWidget {
   /// (today +7 / +30) and the Someday section reports [futureBucketDate].
   final ValueChanged<DateTime>? onActiveDateChanged;
 
+  /// The date a task is grouped under; defaults to its due date. The home
+  /// page uses it to place Backlog items by state (see
+  /// `ItemViews.backlogTabIndex`). Null or [futureBucketDate] → Someday.
+  final DateTime? Function(Task task)? dateOf;
+
   /// Sentinel due date used for the "future / no specific date" bucket.
   static final DateTime futureBucketDate = DateTime(2300, 1, 1);
 
@@ -58,6 +63,7 @@ class ScheduleView extends StatefulWidget {
     required this.addTaskRow,
     required this.onReorderSection,
     this.onActiveDateChanged,
+    this.dateOf,
   }) : super(key: key);
 
   @override
@@ -253,6 +259,9 @@ class ScheduleViewState extends State<ScheduleView> {
     );
   }
 
+  DateTime? _dateOf(Task task) =>
+      widget.dateOf != null ? widget.dateOf!(task) : task.dueDate;
+
   @override
   Widget build(BuildContext context) {
     final today = _dateOnly(widget.currentDate);
@@ -261,7 +270,7 @@ class ScheduleViewState extends State<ScheduleView> {
     final dated = <Task>[];
     final someday = <Task>[];
     for (final t in widget.tasks) {
-      final due = t.dueDate;
+      final due = _dateOf(t);
       if (due == null || _isSameDay(due, ScheduleView.futureBucketDate)) {
         someday.add(t);
       } else {
@@ -274,7 +283,7 @@ class ScheduleViewState extends State<ScheduleView> {
     final grouped = <String, List<Task>>{};
     final keyToDate = <String, DateTime>{};
     for (final task in dated) {
-      final due = _dateOnly(task.dueDate!);
+      final due = _dateOnly(_dateOf(task)!);
       final groupDate = due.isBefore(today) ? today : due;
       final key = _dayKey(groupDate);
       grouped.putIfAbsent(key, () {

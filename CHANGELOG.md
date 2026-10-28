@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.133] - 2026-10-28
+- With Backlog on in the drawer's Home filters, backlog items sit in the home tabs by state — Active in Today, Next in Next week, Someday in Future — and moving or swiping one changes its state instead of its due date.
+
 ## [0.2.132] - 2026-10-28
 - Approvals website: Backlog items now show up there too, so the website lists the same items as the app and Todoist instead of nearly nothing. Approving one there puts it in your Wishlist as usual; to get its Obsidian page, tap **Create Obsidian page** on the item in the app's Wishlist. Groceries and Research items still have to be approved in the app (the footer says how many are waiting there).
 
