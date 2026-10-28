@@ -2,7 +2,9 @@
 
 The app side is built (0.2.123 sorting, 0.2.124 Obsidian pages + research
 rounds; SPEC §4.2j). The other half is **one Claude Code Routine** that runs
-outside this repo, in four modes. This file is everything to set it up.
+outside this repo, in four modes. This file is the reference for the prompt and the Action step; the step-by-step
+checklist (with an end-to-end test and troubleshooting) is
+[`../VOICE_INBOX_HANDOVER.md`](../VOICE_INBOX_HANDOVER.md).
 Names in `<ANGLE_BRACKETS>` are placeholders for things in the owner's private
 vault, deliberately not written into this public repo.
 
