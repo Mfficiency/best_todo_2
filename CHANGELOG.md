@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.131] - 2026-10-28
+- Home filters: next to Todo, MLR and Lemmon there is now a **Backlog** switch (drawer → arrow next to Home). Turn it on to see your Backlog (wishlist) items in the home list too; it's off by default, so nothing changes until you switch it on.
+
 ## [0.2.130] - 2026-10-28
 - Waiting for Approval syncs with Todoist by itself now: opening it pulls the latest (a thin bar shows while it does), and you can pull down to sync again. What you approved or denied on the approvals website or in Todoist shows up right away instead of only after leaving the app. Items that were approved on the website before your phone had this update are fixed on the next sync, and ones denied there go to the Deleted bin instead of staying stuck.
 

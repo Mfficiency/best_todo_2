@@ -717,15 +717,20 @@ edit dialog clears it.
 **Home work-context toggles** (`lib/models/home_contexts.dart`,
 `Config.homeContexts`, persisted in `settings.json` as `homeContexts`): the
 drawer's Home row has an arrow ("Show home filters") folding out **Todo / MLR /
-Lemmon** `FilterChip`s (only on the regular home page). Defaults todo-only — the
-home list then looks exactly as before. "Todo" = items with neither `mlr` nor
-`lemmon`. They live *inside* the one home gate: `ItemViews.isOnHomeScreen`/
-`homeBucket`/`homeVisible` take `contexts:` — with toggles, `contexts.allows(label)`
-alone decides context membership and the rest of `isVisibleInMainViews` still
-applies. Only the in-app home tabs and schedule view pass them (the widget,
-Wear and sync files never do); the `applySearch: false` full-tab callers that
-renumber `listRanking` see all three contexts, so a narrowed list never drives
-the renumbering. `lemmonToken` (`'lemmon'`) is gated exactly like `mlr`
+Lemmon / Backlog** `FilterChip`s (only on the regular home page). Defaults
+todo-only — the home list then looks exactly as before. "Todo" = items with
+neither `mlr` nor `lemmon`; "Backlog" additionally shows wishlist items
+(`Task.isWish`, where approved Backlog items land) whatever the other toggles
+say — with it off, wishes are plain Todo items and the Home rules decide. They live *inside* the one
+home gate: `ItemViews.isOnHomeScreen`/`homeBucket`/`homeVisible` take
+`contexts:` — with toggles, `contexts.allows(task)` alone decides context
+membership and the rest of `isVisibleInMainViews` still applies; with Backlog
+on, a wish's Home filter rules are read without their `Wish` exclude tag (the
+seeded default hides wishes), every other tag still applies. Only the in-app
+home tabs and schedule view pass them (the widget, Wear and sync files never
+do); the `applySearch: false` full-tab callers that renumber `listRanking` see
+every context (`HomeContexts.all`), so a narrowed list never drives the
+renumbering. `lemmonToken` (`'lemmon'`) is gated exactly like `mlr`
 (`isVisibleInMainViews(includeLemmonItems:)`; `includeWorklistItems` lifts both,
 for the tool instances). **Tools ▸ Lemmon** is `HomePage(tagFilter: lemmonToken,
 toolTitle: 'Lemmon')`, amber accent instead of Worklist's orange.

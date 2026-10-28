@@ -2973,7 +2973,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// The drawer's Todo/MLR/Lemmon toggles for this instance's lists — null
+  /// The drawer's Todo/MLR/Lemmon/Backlog toggles for this instance's lists — null
   /// for a tag-filtered tool instance (Worklist, Lemmon), which already
   /// narrows to its own tag. The full-tab ([applySearch] false) callers that
   /// renumber [Task.listRanking] see every context, so a narrowed list never
@@ -2981,7 +2981,7 @@ class _HomePageState extends State<HomePage>
   HomeContexts? _homeContextsFor({bool applySearch = true}) {
     if (widget.tagFilter != null) return null;
     if (!applySearch) {
-      return const HomeContexts(todo: true, mlr: true, lemmon: true);
+      return HomeContexts.all;
     }
     return Config.homeContexts;
   }
@@ -2990,10 +2990,11 @@ class _HomePageState extends State<HomePage>
     setState(() => Config.homeContexts = contexts);
     unawaited(Config.save());
     LogService.add('HomePage._setHomeContexts',
-        'Home shows todo=${contexts.todo} mlr=${contexts.mlr} lemmon=${contexts.lemmon}');
+        'Home shows todo=${contexts.todo} mlr=${contexts.mlr} '
+        'lemmon=${contexts.lemmon} backlog=${contexts.backlog}');
   }
 
-  /// The three toggle chips the drawer's Home row folds out.
+  /// The toggle chips the drawer's Home row folds out.
   Widget _buildHomeContextToggles() {
     final contexts = Config.homeContexts;
     Widget chip(String label, String tooltip, IconData icon, bool selected,
@@ -3022,6 +3023,9 @@ class _HomePageState extends State<HomePage>
               (on) => contexts.copyWith(mlr: on)),
           chip('Lemmon', 'Show Lemmon items', Icons.work_outline,
               contexts.lemmon, (on) => contexts.copyWith(lemmon: on)),
+          chip('Backlog', 'Show Backlog (wishlist) items',
+              Icons.favorite_border, contexts.backlog,
+              (on) => contexts.copyWith(backlog: on)),
         ],
       ),
     );

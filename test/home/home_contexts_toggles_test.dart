@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/home_contexts.dart';
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/models/view_filter_rules.dart';
 import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/ui/home_page.dart';
@@ -32,7 +33,10 @@ void main() {
         .writeAsString('done');
   });
 
-  tearDown(() => Config.homeContexts = HomeContexts.defaults);
+  tearDown(() {
+    Config.homeContexts = HomeContexts.defaults;
+    Config.viewFilterRules = {};
+  });
 
   Future<void> pumpHome(WidgetTester tester, Widget home,
       {required String marker}) async {
@@ -41,6 +45,7 @@ void main() {
           Task(title: 'Regular item', dueDate: now),
           Task(title: 'Migros item', label: worklistToken, dueDate: now),
           Task(title: 'Lemmon item', label: lemmonToken, dueDate: now),
+          Task(title: 'Backlog item', isWish: true, dueDate: now),
         ]));
     await tester.pumpWidget(MaterialApp(home: home));
     final markerFinder = find.text(marker);
@@ -91,7 +96,31 @@ void main() {
         jsonDecode(await File('${tempDir.path}/settings.json').readAsString())
             as Map<String, dynamic>);
     expect(settings!['homeContexts'],
-        {'todo': false, 'mlr': true, 'lemmon': false});
+        {'todo': false, 'mlr': true, 'lemmon': false, 'backlog': false});
+  });
+
+  testWidgets('the Backlog toggle shows wishlist items on the home list',
+      (tester) async {
+    // The seeded Home rules hide wishes; the toggle lifts that.
+    Config.viewFilterRules = {
+      ViewFilterRules.home: ViewFilterRules.defaultsFor(ViewFilterRules.home)!,
+    };
+    await pumpHome(tester, const HomePage(), marker: 'Regular item');
+    expect(find.text('Backlog item'), findsNothing);
+
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Show home filters'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Backlog'));
+    await tester.pumpAndSettle();
+    expect(Config.homeContexts, const HomeContexts(backlog: true));
+
+    await tester.tapAt(const Offset(790, 300));
+    await tester.pumpAndSettle();
+    expect(find.text('Backlog item'), findsOneWidget);
+    expect(find.text('Regular item'), findsOneWidget);
+    expect(find.text('Migros item'), findsNothing);
   });
 
   testWidgets('Tools ▸ Lemmon shows only lemmon-tagged items',

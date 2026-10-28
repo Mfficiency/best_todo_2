@@ -1,5 +1,6 @@
 import 'package:besttodo/models/home_contexts.dart';
 import 'package:besttodo/models/task.dart';
+import 'package:besttodo/models/view_filter_rules.dart';
 import 'package:besttodo/services/grocery_category_service.dart';
 import 'package:besttodo/services/item_views.dart';
 import 'package:besttodo/utils/label_utils.dart';
@@ -82,13 +83,16 @@ void main() {
     final regular = Task(title: 'regular', dueDate: today);
     final mlr = Task(title: 'mlr', label: worklistToken, dueDate: today);
     final lemmon = Task(title: 'lemmon', label: lemmonToken, dueDate: today);
+    final wish = Task(title: 'wish', isWish: true, dueDate: today);
     final all = [regular, mlr, lemmon];
 
-    List<String> shown(HomeContexts? contexts) => ItemViews.homeBucket(
-          all,
+    List<String> shown(HomeContexts? contexts, {ViewFilterRules? rules}) =>
+        ItemViews.homeBucket(
+          rules == null ? all : [...all, wish],
           0,
           today,
           contexts: contexts,
+          rules: rules,
         ).map((t) => t.title).toList();
 
     test('the defaults show regular items only, like before the toggles', () {
@@ -106,6 +110,26 @@ void main() {
       expect(shown(const HomeContexts(todo: false)), isEmpty);
     });
 
+    test('the Backlog toggle shows wishes, lifting the Home rules\' Wish tag',
+        () {
+      final homeRules = ViewFilterRules.defaultsFor(ViewFilterRules.home);
+      expect(shown(HomeContexts.defaults, rules: homeRules), ['regular']);
+      expect(
+          shown(const HomeContexts(todo: false, backlog: true),
+              rules: homeRules),
+          ['wish']);
+      expect(
+          shown(const HomeContexts(backlog: true), rules: homeRules)..sort(),
+          ['regular', 'wish']);
+      // Off, a wish is a plain Todo item: shown when the rules allow it.
+      expect(shown(HomeContexts.defaults, rules: ViewFilterRules())..sort(),
+          ['regular', 'wish']);
+      expect(shown(const HomeContexts(todo: false), rules: ViewFilterRules()),
+          isEmpty);
+      // Lifting Wish leaves the stored Home rules alone.
+      expect(homeRules!.excludeTags, contains(wishToken));
+    });
+
     test('Lemmon items stay out of the other main views', () {
       expect(ItemViews.isVisibleInMainViews(lemmon), isFalse);
       expect(ItemViews.isVisibleInMainViews(lemmon, includeLemmonItems: true),
@@ -115,7 +139,8 @@ void main() {
     });
 
     test('round-trips through JSON', () {
-      const c = HomeContexts(todo: false, mlr: true, lemmon: true);
+      const c =
+          HomeContexts(todo: false, mlr: true, lemmon: true, backlog: true);
       expect(HomeContexts.fromJson(c.toJson()), c);
       expect(HomeContexts.fromJson(const {}), HomeContexts.defaults);
     });

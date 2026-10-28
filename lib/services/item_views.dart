@@ -212,9 +212,10 @@ class ItemViews {
   /// other (0.2.46: the schedule view used to skip [rules] entirely, which
   /// leaked demo/wish/project items onto a phone that starts in that view).
   ///
-  /// [contexts] are the regular home page's Todo/MLR/Lemmon toggles: they
-  /// lift the matching work-context gate *and* narrow to the chosen
-  /// contexts, inside this same gate rather than as a second filter. Null
+  /// [contexts] are the regular home page's Todo/MLR/Lemmon/Backlog toggles:
+  /// they lift the matching work-context gate (for Backlog: the Home rules'
+  /// `Wish` exclude tag) *and* narrow to the chosen contexts, inside this
+  /// same gate rather than as a second filter. Null
   /// (the tool instances, and every non-home caller) means "no toggles".
   static bool isOnHomeScreen(
     Task task, {
@@ -227,12 +228,30 @@ class ItemViews {
     // toggles — Todo only — hide every MLR/Lemmon item, exactly like the
     // plain gate below); the rest of the structural gate still applies.
     final visible = contexts != null
-        ? contexts.allows(task.label) &&
+        ? contexts.allows(task) &&
             isVisibleInMainViews(task, includeWorklistItems: true)
         : isVisibleInMainViews(task,
             includeWorklistItems: includeWorklistItems);
-    return visible && (where == null || where(task)) &&
-        passesFilterRules(task, rules);
+    // The Backlog toggle shows wishes, which the Home rules hide by default
+    // (a `Wish` exclude tag) — the toggle lifts just that one tag for them.
+    final effectiveRules = contexts != null && contexts.backlog && task.isWish
+        ? _withoutExcludeTag(rules, wishToken)
+        : rules;
+    return visible &&
+        (where == null || where(task)) &&
+        passesFilterRules(task, effectiveRules);
+  }
+
+  static ViewFilterRules? _withoutExcludeTag(
+      ViewFilterRules? rules, String tag) {
+    if (rules == null) return null;
+    final lower = tag.toLowerCase();
+    if (!rules.excludeTags.any((t) => t.toLowerCase() == lower)) return rules;
+    return ViewFilterRules(
+      excludeTags:
+          rules.excludeTags.where((t) => t.toLowerCase() != lower).toList(),
+      includeTags: rules.includeTags,
+    );
   }
 
   /// Every task the home screen may show, unbucketed and in list order —
