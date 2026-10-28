@@ -12,22 +12,13 @@ abstract class VaultStore {
 }
 
 class WrongPasswordException implements Exception {
-  /// Attempts left before the vault wipes itself.
-  final int attemptsLeft;
-  const WrongPasswordException(this.attemptsLeft);
+  const WrongPasswordException();
   @override
   String toString() => 'Wrong password';
 }
 
-class VaultLockedOutException implements Exception {
-  final Duration retryIn;
-  const VaultLockedOutException(this.retryIn);
-  @override
-  String toString() => 'Too many attempts';
-}
-
-/// Thrown by [TokenVault.unlock] when the last allowed attempt failed: the
-/// vault is gone, the token has to be entered again.
+/// Thrown by [TokenVault.unlock] when there's no vault (and no ban): the
+/// token has to be entered again.
 class VaultWipedException implements Exception {
   const VaultWipedException();
   @override
@@ -40,34 +31,50 @@ class VaultWipedException implements Exception {
 /// localStorage is useless without the password, and every guess costs a
 /// full PBKDF2 run.
 ///
-/// Wrong passwords are throttled: from the [freeAttempts]th failure on, each
-/// further try waits twice as long as the last (capped at [maxDelay]), and
-/// [maxAttempts] failures in a row delete the vault.
+/// [maxAttempts] wrong passwords in a row shadow-ban the browser: the vault
+/// is deleted at once and, for [banDuration], every attempt — the right
+/// password included — just answers "wrong password" after a realistic
+/// delay, and the vault can't be set up again. Nothing on screen says so.
 class TokenVault {
   static const vaultKey = 'web_approvals_vault';
   static const failuresKey = 'web_approvals_failures';
-  static const lockedUntilKey = 'web_approvals_locked_until';
+  // Deliberately bland: it's the ban's end time.
+  static const bannedUntilKey = 'web_approvals_state';
 
   /// OWASP's 2023 recommendation for PBKDF2-HMAC-SHA256.
   static const int defaultIterations = 600000;
   static const int minPasswordLength = 12;
-  static const int freeAttempts = 3;
-  static const int maxAttempts = 10;
-  static const Duration maxDelay = Duration(minutes: 5);
+  static const int maxAttempts = 2;
+  static const Duration banDuration = Duration(days: 90);
+
+  /// How long a banned attempt pretends to work (a real one runs PBKDF2).
+  static const Duration fakeCheckTime = Duration(milliseconds: 1200);
 
   final VaultStore store;
   final VaultCrypto crypto;
   final int iterations;
   final DateTime Function() now;
+  final Future<void> Function(Duration) delay;
 
   TokenVault({
     required this.store,
     required this.crypto,
     this.iterations = defaultIterations,
     DateTime Function()? now,
-  }) : now = now ?? DateTime.now;
+    Future<void> Function(Duration)? delay,
+  })  : now = now ?? DateTime.now,
+        delay = delay ?? Future<void>.delayed;
 
   Future<bool> exists() async => (await store.read(vaultKey)) != null;
+
+  /// Whether the browser is shadow-banned (see the class doc).
+  Future<bool> isBanned() async {
+    final until = int.tryParse(await store.read(bannedUntilKey) ?? '');
+    if (until == null) return false;
+    if (now().isBefore(DateTime.fromMillisecondsSinceEpoch(until))) return true;
+    await store.delete(bannedUntilKey);
+    return false;
+  }
 
   /// Null when the password is acceptable, else the reason it isn't.
   static String? passwordProblem(String password) {
@@ -79,6 +86,7 @@ class TokenVault {
 
   /// Encrypts [token] under [password], replacing any existing vault.
   Future<void> create(String token, String password) async {
+    if (await isBanned()) throw StateError('Not available');
     final problem = passwordProblem(password);
     if (problem != null) throw ArgumentError(problem);
     final salt = crypto.randomBytes(16);
@@ -104,22 +112,16 @@ class TokenVault {
     await _resetFailures();
   }
 
-  /// How long until the next attempt is allowed (zero = now).
-  Future<Duration> lockedFor() async {
-    final until = int.tryParse(await store.read(lockedUntilKey) ?? '');
-    if (until == null) return Duration.zero;
-    final left = DateTime.fromMillisecondsSinceEpoch(until).difference(now());
-    return left.isNegative ? Duration.zero : left;
-  }
-
-  /// The decrypted token. Throws [VaultLockedOutException] while throttled,
-  /// [WrongPasswordException] for a wrong password and [VaultWipedException]
-  /// when that was the last allowed attempt.
+  /// The decrypted token. Throws [WrongPasswordException] for a wrong
+  /// password — and for every attempt while banned — and
+  /// [VaultWipedException] when there is no vault to open.
   Future<String> unlock(String password) async {
+    if (await isBanned()) {
+      await delay(fakeCheckTime);
+      throw const WrongPasswordException();
+    }
     final raw = await store.read(vaultKey);
     if (raw == null) throw const VaultWipedException();
-    final wait = await lockedFor();
-    if (wait > Duration.zero) throw VaultLockedOutException(wait);
     final Map<String, dynamic> data;
     try {
       data = jsonDecode(raw) as Map<String, dynamic>;
@@ -142,31 +144,18 @@ class TokenVault {
           (int.tryParse(await store.read(failuresKey) ?? '') ?? 0) + 1;
       if (failures >= maxAttempts) {
         await forget();
-        throw const VaultWipedException();
+        await store.write(bannedUntilKey,
+            '${now().add(banDuration).millisecondsSinceEpoch}');
+      } else {
+        await store.write(failuresKey, '$failures');
       }
-      await store.write(failuresKey, '$failures');
-      if (failures >= freeAttempts) {
-        final delay = _delayAfter(failures);
-        await store.write(lockedUntilKey,
-            '${now().add(delay).millisecondsSinceEpoch}');
-      }
-      throw WrongPasswordException(maxAttempts - failures);
+      throw const WrongPasswordException();
     }
   }
 
-  /// 3rd failure → 5 s, then 10 s, 20 s, … up to [maxDelay].
-  static Duration _delayAfter(int failures) {
-    final seconds = 5 * (1 << (failures - freeAttempts));
-    final delay = Duration(seconds: seconds);
-    return delay > maxDelay ? maxDelay : delay;
-  }
+  Future<void> _resetFailures() => store.delete(failuresKey);
 
-  Future<void> _resetFailures() async {
-    await store.delete(failuresKey);
-    await store.delete(lockedUntilKey);
-  }
-
-  /// Deletes the vault and its counters ("Forget this browser").
+  /// Deletes the vault and its counter ("Forget this browser"). A ban stays.
   Future<void> forget() async {
     await store.delete(vaultKey);
     await _resetFailures();

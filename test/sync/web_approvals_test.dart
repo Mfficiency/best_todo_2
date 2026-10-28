@@ -76,12 +76,19 @@ void main() {
     late _MapStore store;
     late DateTime now;
     late TokenVault vault;
+    late List<Duration> delays;
     const password = 'correct horse battery';
 
     setUp(() {
       store = _MapStore();
       now = DateTime(2026, 10, 28, 12);
-      vault = TokenVault(store: store, crypto: _FakeCrypto(), now: () => now);
+      delays = [];
+      vault = TokenVault(
+        store: store,
+        crypto: _FakeCrypto(),
+        now: () => now,
+        delay: (d) async => delays.add(d),
+      );
     });
 
     test('round-trips the token and never stores it in the clear', () async {
@@ -102,43 +109,51 @@ void main() {
       expect(() => vault.create('t', 'short'), throwsArgumentError);
     });
 
-    test('throttles wrong passwords, then wipes itself', () async {
+    test('the 2nd wrong password in a row deletes the token and silently '
+        'bans the browser for 3 months', () async {
       await vault.create('secret-token-123', password);
-      for (var i = 1; i < TokenVault.freeAttempts; i++) {
-        await expectLater(vault.unlock('nope nope nope'),
-            throwsA(isA<WrongPasswordException>()));
-        expect(await vault.lockedFor(), Duration.zero);
-      }
-      await expectLater(
-        vault.unlock('nope nope nope'),
-        throwsA(isA<WrongPasswordException>().having(
-            (e) => e.attemptsLeft,
-            'attemptsLeft',
-            TokenVault.maxAttempts - TokenVault.freeAttempts)),
-      );
-      expect(await vault.lockedFor(), const Duration(seconds: 5));
-      // Even the right password waits out the lockout.
-      await expectLater(
-          vault.unlock(password), throwsA(isA<VaultLockedOutException>()));
+      await expectLater(vault.unlock('nope nope nope'),
+          throwsA(isA<WrongPasswordException>()));
+      expect(await vault.exists(), isTrue);
+      expect(await vault.isBanned(), isFalse);
 
-      for (var i = TokenVault.freeAttempts + 1; i < TokenVault.maxAttempts; i++) {
-        now = now.add(TokenVault.maxDelay);
-        await expectLater(vault.unlock('nope nope nope'),
-            throwsA(isA<WrongPasswordException>()));
-      }
-      expect(await vault.lockedFor(), TokenVault.maxDelay);
-      now = now.add(TokenVault.maxDelay);
+      await expectLater(vault.unlock('nope again!!'),
+          throwsA(isA<WrongPasswordException>()));
+      expect(await vault.exists(), isFalse);
+      expect(store.data.toString(), isNot(contains('secret')));
+      expect(await vault.isBanned(), isTrue);
+      expect(delays, isEmpty);
+
+      // The right password gets the same answer, after a realistic pause.
       await expectLater(
-          vault.unlock('nope nope nope'), throwsA(isA<VaultWipedException>()));
-      expect(store.data, isEmpty);
+          vault.unlock(password), throwsA(isA<WrongPasswordException>()));
+      expect(delays, [TokenVault.fakeCheckTime]);
+      // Setting up again and Forget don't lift it.
+      await expectLater(vault.create('other-token', password), throwsStateError);
+      await vault.forget();
+      expect(await vault.isBanned(), isTrue);
+
+      now = now.add(TokenVault.banDuration - const Duration(minutes: 1));
+      expect(await vault.isBanned(), isTrue);
+      now = now.add(const Duration(minutes: 2));
+      expect(await vault.isBanned(), isFalse);
+      await expectLater(
+          vault.unlock(password), throwsA(isA<VaultWipedException>()));
+      await vault.create('secret-token-123', password);
+      expect(await vault.unlock(password), 'secret-token-123');
     });
 
-    test('the right password resets the failure count', () async {
+    test('only wrong passwords in a row count: the right one resets them',
+        () async {
       await vault.create('secret-token-123', password);
       await expectLater(vault.unlock('nope nope nope'),
           throwsA(isA<WrongPasswordException>()));
       expect(await vault.unlock(password), 'secret-token-123');
       expect(store.data.keys, [TokenVault.vaultKey]);
+      await expectLater(vault.unlock('nope nope nope'),
+          throwsA(isA<WrongPasswordException>()));
+      expect(await vault.isBanned(), isFalse);
+      expect(await vault.unlock(password), 'secret-token-123');
     });
 
     test('forget deletes everything', () async {
@@ -242,7 +257,8 @@ void main() {
 
     setUp(() {
       store = _MapStore();
-      vault = TokenVault(store: store, crypto: _FakeCrypto());
+      vault = TokenVault(
+          store: store, crypto: _FakeCrypto(), delay: (_) async {});
     });
 
     Future<void> pumpSite(WidgetTester tester,
@@ -267,8 +283,8 @@ void main() {
       expect(store.data, isEmpty);
     });
 
-    testWidgets('a wrong password says how many attempts are left, the right '
-        'one loads the account', (tester) async {
+    testWidgets('a wrong password says only "Wrong password", the right one '
+        'loads the account', (tester) async {
       await tester.runAsync(
           () => vault.create('secret-token-123', 'correct horse battery'));
       String? loadedWith;
@@ -282,7 +298,7 @@ void main() {
           find.byKey(const Key('site-password')), 'wrong password!');
       await tester.tap(find.text('Unlock'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('9 attempt(s) left'), findsOneWidget);
+      expect(find.text('Wrong password'), findsOneWidget);
       expect(loadedWith, isNull);
 
       await tester.enterText(
@@ -293,6 +309,36 @@ void main() {
       // The load failed (offline): back on the lock screen, saying why.
       expect(find.text('Unlock'), findsOneWidget);
       expect(find.textContaining('offline'), findsOneWidget);
+    });
+
+    testWidgets('a banned browser keeps showing a normal lock screen',
+        (tester) async {
+      await tester.runAsync(() async {
+        await vault.create('secret-token-123', 'correct horse battery');
+        for (final guess in ['guess number one', 'guess number two']) {
+          await expectLater(vault.unlock(guess),
+              throwsA(isA<WrongPasswordException>()));
+        }
+      });
+      var loaded = false;
+      await pumpSite(tester, loadData: (_, __) async {
+        loaded = true;
+        return 0;
+      });
+      expect(find.text('Unlock'), findsOneWidget);
+      await tester.enterText(
+          find.byKey(const Key('site-password')), 'correct horse battery');
+      await tester.tap(find.text('Unlock'));
+      await tester.pumpAndSettle();
+      expect(find.text('Wrong password'), findsOneWidget);
+      expect(loaded, isFalse);
+
+      await tester.tap(find.text('Forget this browser'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Forget'));
+      await tester.pumpAndSettle();
+      expect(find.text('Unlock'), findsOneWidget);
+      expect(find.text('Set up approvals'), findsNothing);
     });
   });
 }

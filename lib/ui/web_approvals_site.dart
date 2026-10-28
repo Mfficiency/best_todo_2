@@ -106,7 +106,6 @@ class _WebApprovalsSiteState extends State<WebApprovalsSite> {
   ApprovalsSyncCoordinator? _sync;
   Timer? _idleTimer;
   Timer? _pullTimer;
-  Timer? _lockoutTicker;
 
   @override
   void initState() {
@@ -119,33 +118,23 @@ class _WebApprovalsSiteState extends State<WebApprovalsSite> {
       setState(() => _stage = _Stage.framed);
       return;
     }
-    final exists = await widget.vault.exists();
+    // A banned browser looks exactly like one with a vault.
+    final locked =
+        await widget.vault.exists() || await widget.vault.isBanned();
     if (!mounted) return;
-    setState(() => _stage = exists ? _Stage.locked : _Stage.setup);
-    if (exists) unawaited(_showLockout());
+    setState(() => _stage = locked ? _Stage.locked : _Stage.setup);
   }
 
   @override
   void dispose() {
     _idleTimer?.cancel();
     _pullTimer?.cancel();
-    _lockoutTicker?.cancel();
     _sync?.dispose();
     HardwareKeyboard.instance.removeHandler(_onKey);
     _token.dispose();
     _password.dispose();
     _confirm.dispose();
     super.dispose();
-  }
-
-  /// While throttled after wrong passwords, counts down in [_error].
-  Future<void> _showLockout() async {
-    _lockoutTicker?.cancel();
-    final left = await widget.vault.lockedFor();
-    if (!mounted || left == Duration.zero) return;
-    setState(() => _error = 'Too many wrong passwords — wait '
-        '${left.inSeconds + 1} s');
-    _lockoutTicker = Timer(const Duration(seconds: 1), _showLockout);
   }
 
   Future<void> _setUp() async {
@@ -171,7 +160,12 @@ class _WebApprovalsSiteState extends State<WebApprovalsSite> {
       return;
     }
     setState(() => _status = 'Encrypting it in this browser…');
-    await widget.vault.create(token, password);
+    try {
+      await widget.vault.create(token, password);
+    } catch (e) {
+      _fail(e);
+      return;
+    }
     await _open(token);
   }
 
@@ -186,16 +180,10 @@ class _WebApprovalsSiteState extends State<WebApprovalsSite> {
     final String token;
     try {
       token = await widget.vault.unlock(password);
-    } on WrongPasswordException catch (e) {
+    } on WrongPasswordException {
+      // Same answer whether it was a typo or the browser is banned.
       _password.clear();
-      _fail(null,
-          message: 'Wrong password — ${e.attemptsLeft} attempt(s) left '
-              'before this browser forgets the token');
-      unawaited(_showLockout());
-      return;
-    } on VaultLockedOutException {
-      _fail(null, message: '');
-      unawaited(_showLockout());
+      _fail(null, message: 'Wrong password');
       return;
     } on VaultWipedException {
       _password.clear();
@@ -203,8 +191,7 @@ class _WebApprovalsSiteState extends State<WebApprovalsSite> {
         _busy = false;
         _status = null;
         _stage = _Stage.setup;
-        _error = 'Too many wrong passwords: the token was deleted from this '
-            'browser. Set it up again.';
+        _error = null;
       });
       return;
     }
@@ -316,7 +303,8 @@ class _WebApprovalsSiteState extends State<WebApprovalsSite> {
       await _lock();
       return;
     }
-    if (!mounted) return;
+    // Banned: nothing visible happens — setup stays closed.
+    if (await widget.vault.isBanned() || !mounted) return;
     setState(() {
       _error = null;
       _stage = _Stage.setup;

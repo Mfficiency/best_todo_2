@@ -953,7 +953,7 @@ step stopped at one real consumer instead of rewriting every view's tile widget 
 config — `TaskTile` (Home) and the other bespoke tiles (Wishlist, Alarms, Countdown, Food
 Diary, Waiting for Approval, Projects) are unchanged.
 
-### 4.2k Approvals website — Waiting for Approval in a browser (0.2.126)
+### 4.2k Approvals website — Waiting for Approval in a browser (0.2.126, ban 0.2.127)
 
 A password-locked website that shows only Waiting for Approval, so items can be
 approved from a computer where the app isn't installed. It is a separate entry point
@@ -981,11 +981,21 @@ and it stays in that browser's localStorage, encrypted (`TokenVault`,
 - **Stored record:** `web_approvals_vault` = `{v, kdf, iterations, salt, iv,
   ciphertext}`. The plain token is never written anywhere. A wrong password fails
   GCM's tag check.
-- **Wrong passwords:** the first 2 failures are free. From the 3rd, each attempt waits
-  5 s, then twice as long each time, up to 5 min (`web_approvals_locked_until`). The
-  10th failure in a row deletes the vault (`VaultWipedException`), and the person
-  sets the site up again. The right password resets the count. *Forget this browser*
-  (on the lock screen and in the page menu) deletes it on demand.
+- **Wrong passwords — silent ban (0.2.127):** the 2nd wrong password in a row deletes
+  the vault at once. It also bans the browser for 90 days (`web_approvals_state` = the
+  ban's end time) without saying so. While banned:
+  - the lock screen looks normal;
+  - every attempt, the right password included, answers "Wrong password" after
+    `fakeCheckTime` (1.2 s, about one PBKDF2 run);
+  - `create` refuses, so the site can't be set up again;
+  - *Forget this browser* deletes nothing more and leaves the ban in place.
+
+  The right password resets the count. There is no visible attempts-left warning,
+  because it would give the ban away. The ban lives in that browser's storage
+  (there's no server), so clearing the site's data lifts it. By then the token is
+  already gone, and clearing site data is also how the owner recovers from their own
+  two typos. *Forget this browser* (on the lock screen and in the page menu) deletes
+  the vault on demand.
 - **Locking:** after unlocking, the task list lives only in the tab's memory
   (`Config.webRealData`, the same in-memory store as a Chrome dev run;
   `loadRealTodoistData` in `real_data_loader.dart` is shared with
