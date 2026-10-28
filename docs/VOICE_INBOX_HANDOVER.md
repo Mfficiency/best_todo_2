@@ -13,6 +13,17 @@
 > - **Still open:** the "BestToDo voice inbox" routine is only used for the
 >   app's write-page/research fires. Those still need its vault repo (step 2)
 >   and the app settings (step 3).
+> - **Its sort mode now reads Pocket too**
+>   ([`voice-inbox-routine.md`](proposals/voice-inbox-routine.md); a run
+>   without `MODE:` = sort). To move the hourly sort into this one routine:
+>   1. give it the **Pocket** connector;
+>   2. paste the new prompt;
+>   3. give it an hourly schedule;
+>   4. then disable the separate hourly routine.
+
+>   Never schedule both: they share the state task, so items would arrive
+>   twice. (Agents can't edit this routine, which was created via the API;
+>   only the routines UI can.)
 
 Everything inside the app is built and on `dev` (0.2.123 – 0.2.125). What's
 left is on your side: one Claude Routine, one step in the vault repo's GitHub
