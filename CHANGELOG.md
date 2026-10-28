@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.128] - 2026-10-28
+- Waiting for Approval: inside each category (Todo, Migros, ...) the items are now also grouped by date and conversation, with a small header like "2026-10-28  Walk 21 Oct (2)" — in the app and on the approvals website. Long-press one of those headers to select just its items.
+
 ## [0.2.127] - 2026-10-28
 - Approvals website: two wrong passwords in a row now delete the saved token from that browser right away and block it for 3 months, without saying so — the lock screen keeps answering "Wrong password", even to the right one, and the site can't be set up again there. If that happens to you after a typo, clear the site's data in that browser (site settings → clear data) and set it up again with your Todoist token.
 

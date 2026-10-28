@@ -646,6 +646,13 @@ Todoist copy (pulled exactly once).
   conversation* (the previous grouping, `_groupKeyFor`), *One list*. Category
   sections follow `ApprovalGroups.all` (Todo, Migros, Lemmon, Backlog, Research,
   Groceries, Food diary, Other); empty ones are hidden — except while dragging.
+  **Inside each category the items are grouped by date/conversation too (0.2.128)**:
+  the same `_groupKeyFor` groups as *By conversation* (source title with the date
+  of the group's first item, else the creation hour), in sort order, each under an
+  indented sub-header (`_ApprovalGroupHeader(sub: true)`, key
+  `approval-subgroup-<category>-<group>`, built by `_buildConversationHeader`
+  like the conversation view's headers). Tapping one while selecting toggles its
+  items, and long-pressing it starts a selection with just those items.
 - The row shows the suggestion as "→ Tomorrow" / "→ Next" (`_suggestionLabel`).
 - Swipe options per group (`_PendingTaskTileState._optionButtons`): Todo/Migros/
   Lemmon — the day buckets (suggested one bold), deny side Deny +

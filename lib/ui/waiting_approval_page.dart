@@ -964,7 +964,13 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
                           ? null
                           : () => _startSelectionForGroup(items),
                     ),
-                    for (final task in items) _buildTile(task),
+                    for (final entry in _groupedPending(items).entries) ...[
+                      _buildConversationHeader(entry.key, entry.value,
+                          sub: true,
+                          key: ValueKey(
+                              'approval-subgroup-$group-${entry.key}')),
+                      for (final task in entry.value) _buildTile(task),
+                    ],
                   ],
                 ),
               );
@@ -988,26 +994,32 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
     return ListView(
       children: [
         for (final entry in grouped.entries) ...[
-          _ApprovalGroupHeader(
-            date: _groupNeedsLeadingDate(entry.key, entry.value.first)
-                ? entry.value.first.createdAt
-                : null,
-            title: entry.key,
-            count: entry.value.length,
-            selecting: _selecting,
-            allSelected: entry.value.every((t) => _selectedUids.contains(t.uid)),
-            onTap: _selecting
-                ? () => _toggleGroupSelected(entry.value)
-                : null,
-            onLongPress: _selecting
-                ? null
-                : () => _startSelectionForGroup(entry.value),
-          ),
+          _buildConversationHeader(entry.key, entry.value),
           for (final task in entry.value) _buildTile(task),
         ],
       ],
     );
   }
+
+  /// The header of one date/conversation group ([_groupKeyFor]) — a section
+  /// of its own in the conversation view, a [sub]-header inside each
+  /// category of the category view. Either way tapping it while selecting
+  /// toggles its items, long-pressing it starts a selection with them.
+  Widget _buildConversationHeader(String title, List<Task> items,
+          {bool sub = false, Key? key}) =>
+      _ApprovalGroupHeader(
+        key: key,
+        sub: sub,
+        date: _groupNeedsLeadingDate(title, items.first)
+            ? items.first.createdAt
+            : null,
+        title: title,
+        count: items.length,
+        selecting: _selecting,
+        allSelected: items.every((t) => _selectedUids.contains(t.uid)),
+        onTap: _selecting ? () => _toggleGroupSelected(items) : null,
+        onLongPress: _selecting ? null : () => _startSelectionForGroup(items),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1066,7 +1078,13 @@ class _ApprovalGroupHeader extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
+  /// A date/conversation group nested inside a category section: indented,
+  /// smaller and lighter than the category header above it.
+  final bool sub;
+
   const _ApprovalGroupHeader({
+    super.key,
+    this.sub = false,
     required this.date,
     required this.title,
     required this.count,
@@ -1082,7 +1100,9 @@ class _ApprovalGroupHeader extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+        padding: sub
+            ? const EdgeInsets.fromLTRB(24, 8, 8, 2)
+            : const EdgeInsets.fromLTRB(8, 16, 8, 4),
         child: Row(
           children: [
             if (selecting) ...[
@@ -1100,10 +1120,13 @@ class _ApprovalGroupHeader extends StatelessWidget {
                 date != null
                     ? '${_formatDateOnly(date!)}  $title ($count)'
                     : '$title ($count)',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: sub
+                    ? Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)
+                    : Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
           ],

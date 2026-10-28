@@ -1053,6 +1053,40 @@ void main() {
     expect(saved.single['label'], contains('bike'));
     expect(find.text('Fix bike brakes'), findsOneWidget);
   });
+
+  testWidgets(
+      'the category view groups each category by date/conversation too, and '
+      'long-pressing a conversation selects just its items', (tester) async {
+    Task pending(String title, String group, String source) => Task(
+          title: title,
+          label: waitingApprovalToken,
+          approvalGroup: group,
+          pendingSourceTitle: source,
+          createdAt: DateTime(2026, 10, 21, 9),
+        );
+    await pumpPending(
+      tester,
+      tasks: [
+        pending('Buy milk', 'todo', 'Walk 21 Oct'),
+        pending('Call bank', 'todo', 'Walk 21 Oct'),
+        pending('Book dentist', 'todo', 'Lunch call'),
+        pending('Order labels', 'migros', 'Walk 21 Oct'),
+      ],
+      marker: 'Buy milk',
+    );
+
+    expect(find.text('Todo (3)'), findsOneWidget);
+    expect(find.text('Migros (1)'), findsOneWidget);
+    // Sub-headers carry the date and the conversation, per category.
+    expect(find.textContaining('Walk 21 Oct (2)'), findsOneWidget);
+    expect(find.textContaining('Lunch call (1)'), findsOneWidget);
+    expect(find.textContaining('Walk 21 Oct (1)'), findsOneWidget);
+    expect(find.textContaining('2026-10-21'), findsNWidgets(3));
+
+    await tester.longPress(find.textContaining('Walk 21 Oct (2)'));
+    await tester.pump();
+    expect(find.text('2 selected'), findsOneWidget);
+  });
 }
 
 class _FakeVoiceInbox extends VoiceInboxService {
