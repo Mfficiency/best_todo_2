@@ -1,5 +1,19 @@
 # Voice inbox — handover: what you need to do to make it work
 
+> **Status 28 Oct 2026 — sorting runs without steps 2 and 4.** The routine was
+> created but never fired (no vault repo attached, no vault Action step). The
+> old "Sync Pocket…" routine (`trig_01ApvNY8ogVMRRL33TUi3J9L`) was therefore
+> repurposed as **"BestToDo voice inbox — hourly sort from Pocket"**: it runs
+> `MODE: sort` every hour, straight from Pocket, with the same `[Group:]`/
+> `[Suggest:]` markers. See `.claude/notes/pocket-todoist-ingestion.md`
+> ("Hourly sort from Pocket").
+> - **Step 4 (vault Action):** not needed any more. **Don't add it** while
+>   the hourly task runs, or every item arrives twice.
+> - **Step 5:** don't disable the hourly task. It *is* the sorter now.
+> - **Still open:** the "BestToDo voice inbox" routine is only used for the
+>   app's write-page/research fires. Those still need its vault repo (step 2)
+>   and the app settings (step 3).
+
 Everything inside the app is built and on `dev` (0.2.123 – 0.2.125). What's
 left is on your side: one Claude Routine, one step in the vault repo's GitHub
 Action, and two app settings. This page is the checklist, in order. Plan about
