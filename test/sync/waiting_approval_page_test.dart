@@ -1087,6 +1087,104 @@ void main() {
     await tester.pump();
     expect(find.text('2 selected'), findsOneWidget);
   });
+
+  testWidgets(
+      'a conversation header\'s Deny all denies just that conversation in '
+      'one click, with one undo', (tester) async {
+    Task pending(String title, String source) => Task(
+          title: title,
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+          pendingSourceTitle: source,
+          createdAt: DateTime(2026, 10, 21, 9),
+        );
+    await pumpPending(
+      tester,
+      tasks: [
+        pending('Buy milk', 'Walk 21 Oct'),
+        pending('Call bank', 'Walk 21 Oct'),
+        pending('Book dentist', 'Lunch call'),
+      ],
+      marker: 'Buy milk',
+    );
+
+    await tester.tap(find.byTooltip('Deny all in Walk 21 Oct'));
+    await tester.pump();
+    await settleWrites(tester);
+    expect(find.text('Buy milk'), findsNothing);
+    expect(find.text('Call bank'), findsNothing);
+    expect(find.text('Book dentist'), findsOneWidget);
+    expect(find.text('Denied 2 items'), findsOneWidget);
+
+    // Let the snackbar finish animating in so the Undo action is tappable.
+    await tester.pump(const Duration(milliseconds: 750));
+    await tester.tap(find.text('Undo'));
+    await tester.pump();
+    await settleWrites(tester);
+    expect(find.text('Buy milk'), findsOneWidget);
+    expect(find.text('Call bank'), findsOneWidget);
+  });
+
+  testWidgets('a category header\'s Deny all sends its items to the bin',
+      (tester) async {
+    await pumpPending(
+      tester,
+      tasks: [
+        Task(title: 'Buy milk', label: waitingApprovalToken, approvalGroup: 'todo'),
+        Task(
+            title: 'Order labels',
+            label: waitingApprovalToken,
+            approvalGroup: 'migros'),
+      ],
+      marker: 'Buy milk',
+    );
+    await tester.tap(find.byTooltip('Deny all in Migros'));
+    await tester.pump();
+    await settleWrites(tester);
+    expect(find.text('Order labels'), findsNothing);
+    expect(find.text('Buy milk'), findsOneWidget);
+    // The undo window runs out: the item moves to the bin.
+    await tester.pump(Config.delayDuration + const Duration(milliseconds: 50));
+    await settleWrites(tester);
+    final binned = await readJsonList(tester, 'deleted_bin.json');
+    expect(binned.map((t) => t['title']), ['Order labels']);
+  });
+
+  testWidgets(
+      'Approve all on a header approves each item as suggested in one click',
+      (tester) async {
+    Task pending(String title, String source, {String? suggest}) => Task(
+          title: title,
+          label: waitingApprovalToken,
+          approvalGroup: 'todo',
+          approvalSuggestion: suggest,
+          pendingSourceTitle: source,
+        );
+    await pumpPending(
+      tester,
+      tasks: [
+        pending('Buy milk', 'Walk 21 Oct', suggest: 'tomorrow'),
+        pending('Call bank', 'Walk 21 Oct'),
+        pending('Book dentist', 'Lunch call'),
+      ],
+      marker: 'Buy milk',
+    );
+
+    await tester.tap(find.byTooltip('Approve all in Walk 21 Oct'));
+    await tester.pump();
+    await settleWrites(tester);
+    expect(find.text('Buy milk'), findsNothing);
+    expect(find.text('Call bank'), findsNothing);
+    expect(find.text('Book dentist'), findsOneWidget);
+
+    final tasks = await readJsonList(tester, 'tasks.json');
+    final milk = tasks.firstWhere((t) => t['title'] == 'Buy milk');
+    expect(milk['label'], isNot(contains('approval')));
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    expect(DateTime.parse(milk['dueDate'] as String).day, tomorrow.day);
+    final dentist = tasks.firstWhere((t) => t['title'] == 'Book dentist');
+    expect(dentist['label'], contains('approval'));
+  });
 }
 
 class _FakeVoiceInbox extends VoiceInboxService {

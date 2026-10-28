@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.129] - 2026-10-28
+- Waiting for Approval: every category and every date/conversation header now has its own approve (green ✓, left) and deny (red ✗, right) button, so a whole group is handled in one click — in the app and on the approvals website. Approving applies each item's suggestion; denying shows the usual Undo for a few seconds.
+
 ## [0.2.128] - 2026-10-28
 - Waiting for Approval: inside each category (Todo, Migros, ...) the items are now also grouped by date and conversation, with a small header like "2026-10-28  Walk 21 Oct (2)" — in the app and on the approvals website. Long-press one of those headers to select just its items.
 

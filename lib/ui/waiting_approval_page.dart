@@ -713,9 +713,13 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   /// Approves every selected item in one go, each exactly like its own plain
   /// Approve button (its category, with the routine's suggestion if any).
-  void _approveSelection() {
-    final targets =
-        _pending().where((t) => _selectedUids.contains(t.uid)).toList();
+  void _approveSelection() => _approveItems(
+      _pending().where((t) => _selectedUids.contains(t.uid)).toList());
+
+  /// Approves each of [targets] its own way ("approve as suggested", like the
+  /// plain Approve button) with a single save — Approve selected and a group
+  /// header's one-click approve-all.
+  void _approveItems(List<Task> targets) {
     if (targets.isEmpty) return;
     _batching = true;
     try {
@@ -736,9 +740,10 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
 
   /// Denies every selected item in one go, with a single combined undo
   /// snackbar — the bulk equivalent of [_deny].
-  void _denySelection() {
-    final targets =
-        _pending().where((t) => _selectedUids.contains(t.uid)).toList();
+  void _denySelection() => _denyItems(
+      _pending().where((t) => _selectedUids.contains(t.uid)).toList());
+
+  void _denyItems(List<Task> targets) {
     if (targets.isEmpty) return;
     final originalIndices = <Task, int>{
       for (final task in targets) task: _tasks.indexOf(task),
@@ -963,6 +968,12 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
                       onLongPress: _selecting || items.isEmpty
                           ? null
                           : () => _startSelectionForGroup(items),
+                      onApproveAll: _selecting || items.isEmpty
+                          ? null
+                          : () => _approveItems(items),
+                      onDenyAll: _selecting || items.isEmpty
+                          ? null
+                          : () => _denyItems(items),
                     ),
                     for (final entry in _groupedPending(items).entries) ...[
                       _buildConversationHeader(entry.key, entry.value,
@@ -1019,6 +1030,8 @@ class _WaitingApprovalPageState extends State<WaitingApprovalPage> {
         allSelected: items.every((t) => _selectedUids.contains(t.uid)),
         onTap: _selecting ? () => _toggleGroupSelected(items) : null,
         onLongPress: _selecting ? null : () => _startSelectionForGroup(items),
+        onApproveAll: _selecting ? null : () => _approveItems(items),
+        onDenyAll: _selecting ? null : () => _denyItems(items),
       );
 
   @override
@@ -1078,6 +1091,11 @@ class _ApprovalGroupHeader extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
+  /// One click approves / denies every item of the group (denying has the
+  /// usual undo snackbar); null hides the button.
+  final VoidCallback? onApproveAll;
+  final VoidCallback? onDenyAll;
+
   /// A date/conversation group nested inside a category section: indented,
   /// smaller and lighter than the category header above it.
   final bool sub;
@@ -1092,6 +1110,8 @@ class _ApprovalGroupHeader extends StatelessWidget {
     required this.allSelected,
     required this.onTap,
     required this.onLongPress,
+    this.onApproveAll,
+    this.onDenyAll,
   });
 
   @override
@@ -1100,9 +1120,13 @@ class _ApprovalGroupHeader extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
+        // With the approve/deny buttons: their icons line up with the
+        // rows' (category level) or sit one step in (conversation level).
         padding: sub
-            ? const EdgeInsets.fromLTRB(24, 8, 8, 2)
-            : const EdgeInsets.fromLTRB(8, 16, 8, 4),
+            ? EdgeInsets.fromLTRB(onApproveAll != null ? 34 : 24, 8,
+                onDenyAll != null ? 26 : 8, 2)
+            : EdgeInsets.fromLTRB(onApproveAll != null ? 18 : 8, 16,
+                onDenyAll != null ? 26 : 8, 4),
         child: Row(
           children: [
             if (selecting) ...[
@@ -1115,6 +1139,13 @@ class _ApprovalGroupHeader extends StatelessWidget {
               ),
               const SizedBox(width: 12),
             ],
+            if (onApproveAll != null)
+              _headerAction(
+                'Approve all in $title',
+                Icons.check_circle_outline,
+                Colors.green,
+                onApproveAll!,
+              ),
             Expanded(
               child: Text(
                 date != null
@@ -1129,12 +1160,35 @@ class _ApprovalGroupHeader extends StatelessWidget {
                         ?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
+            // Same icons and sides as each row's Approve/Deny; as tall as
+            // the title, so the header keeps its height.
+            if (onDenyAll != null)
+              _headerAction(
+                'Deny all in $title',
+                Icons.cancel_outlined,
+                Theme.of(context).colorScheme.error,
+                onDenyAll!,
+              ),
           ],
         ),
       ),
     );
   }
 }
+
+Widget _headerAction(
+        String tooltip, IconData icon, Color color, VoidCallback onTap) =>
+    Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 18,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Icon(icon, size: 20, color: color),
+        ),
+      ),
+    );
 
 /// Bubbled up by a [_PendingTaskTile] when a long-press drag starts or ends,
 /// so the page can offer the empty categories as drop targets meanwhile.

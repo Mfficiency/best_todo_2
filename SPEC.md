@@ -653,6 +653,16 @@ Todoist copy (pulled exactly once).
   `approval-subgroup-<category>-<group>`, built by `_buildConversationHeader`
   like the conversation view's headers). Tapping one while selecting toggles its
   items, and long-pressing it starts a selection with just those items.
+  **One-click approve/deny per group (0.2.129):** every category header and every
+  date/conversation header (sub-header or the conversation view's header) has a green
+  ✓ before its title and a red ✗ at its right, the same icons and sides as each row's
+  Approve/Deny (`onApproveAll`/`onDenyAll`, tooltips "Approve all in <title>" /
+  "Deny all in <title>"; hidden while selecting). They act on the group's items as
+  listed (hidden categories on the website excluded). ✓ = `_approveItems`, the
+  Approve selected path: each item approved as suggested, one save. ✗ = `_denyItems`,
+  the Deny selected path: no dialog, one "Denied N items" snackbar with Undo, then the
+  Deleted bin. The buttons are as tall as the title, so the header height doesn't
+  change.
 - The row shows the suggestion as "→ Tomorrow" / "→ Next" (`_suggestionLabel`).
 - Swipe options per group (`_PendingTaskTileState._optionButtons`): Todo/Migros/
   Lemmon — the day buckets (suggested one bold), deny side Deny +
