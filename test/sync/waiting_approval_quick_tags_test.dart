@@ -138,7 +138,8 @@ void main() {
     await tester.pump();
     expect(find.text('Wishlist'), findsOneWidget);
 
-    await tester.tap(find.text('From Todoist'));
+    // The row's title (the expanded editor's Title field repeats it).
+    await tester.tap(find.text('From Todoist').first);
     await tester.pump();
 
     expect(find.text('Wishlist'), findsNothing);

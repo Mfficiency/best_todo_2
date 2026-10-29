@@ -491,7 +491,10 @@ class _FoodDiaryPageState extends State<FoodDiaryPage> {
           ..isStomachIssue = result.isStomachIssue
           ..stomachEventType = result.stomachEventType
           ..stomachSymptomTypes = result.stomachSymptomTypes
-          ..stomachIntensity = result.stomachIntensity;
+          ..stomachIntensity = result.stomachIntensity
+          // Saving the edit dialog is the confirmation the voice inbox's
+          // blue "please verify" dot asks for.
+          ..needsVerification = false;
       }
     });
     await _save();
@@ -1343,7 +1346,28 @@ class _FoodDiaryTile extends StatelessWidget {
       child: Card(
         color: _cardColor(context, time),
         child: ListTile(
-          title: Text(foodDiaryEntryTitle(entry)),
+          title: Row(
+            children: [
+              if (entry.needsVerification) ...[
+                // A voice-inbox entry the routine couldn't match to an
+                // existing meal: please check it. Cleared by editing it.
+                Tooltip(
+                  message: 'Added from a voice note — please verify',
+                  child: Container(
+                    key: const Key('food-verify-dot'),
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Flexible(child: Text(foodDiaryEntryTitle(entry))),
+            ],
+          ),
           trailing: IconButton(
             tooltip: 'Copy entry to now',
             onPressed: onCopyToNow,

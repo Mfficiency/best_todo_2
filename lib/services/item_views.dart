@@ -1,9 +1,11 @@
 import '../config.dart';
+import '../models/home_contexts.dart';
 import '../models/task.dart';
 import '../models/view_filter_rules.dart';
 import '../utils/date_utils.dart';
 import '../utils/label_utils.dart';
 import '../utils/task_utils.dart';
+import '../utils/voice_inbox.dart';
 
 /// The views layer: every surface that shows items — home tabs, wishlist,
 /// project boards, project cards — is a *query over the one task list*,
@@ -39,18 +41,27 @@ class ItemViews {
   /// wishlist, projects, the home-screen widget, Todoist sync — as opposed
   /// to being gated into exactly one dedicated tool. Combines the Todoist
   /// approval gate with the Food Diary gate ([Task.isEatingHabit]), the
-  /// Research gate ([Task.isResearch]) and the Worklist gate
-  /// ([hasWorklistToken]): a food diary entry, research item, or task tagged
-  /// `mlr` is visible only in its own tool and, once deleted there, the
-  /// deleted/archived lists. [includeWorklistItems] lifts the Worklist gate
-  /// for the one caller that is that dedicated tool — the Worklist instance
-  /// of the home page itself (see [homeBucket]).
+  /// Research gate ([Task.isResearch]), the Groceries gate
+  /// ([Task.isGrocery]) and the two work-context gates ([hasWorklistToken],
+  /// [hasLemmonToken]): a food diary entry, research item, grocery item, or
+  /// task tagged `mlr`/`lemmon` is visible only in its own tool and, once
+  /// deleted there, the deleted/archived lists. [includeWorklistItems] lifts
+  /// the work-context gates for the callers that are those dedicated tools —
+  /// the Worklist/Lemmon instances of the home page itself, which narrow to
+  /// their own tag with a `where` predicate (see [homeBucket]);
+  /// [includeLemmonItems] lifts only the Lemmon gate (the home page's Lemmon
+  /// toggle, see [HomeContexts]).
   static bool isVisibleInMainViews(Task task,
-          {bool includeWorklistItems = false}) =>
+          {bool includeWorklistItems = false,
+          bool includeLemmonItems = false}) =>
       isApproved(task) &&
       !task.isEatingHabit &&
       !task.isResearch &&
-      (includeWorklistItems || !hasWorklistToken(task.label));
+      !task.isGrocery &&
+      (includeWorklistItems || !hasWorklistToken(task.label)) &&
+      (includeWorklistItems ||
+          includeLemmonItems ||
+          !hasLemmonToken(task.label));
 
   /// Whether [task] belongs to home tab [tabIndex] relative to [today].
   /// Bucketing is by date-only distance: `<= 0` Today (overdue included),
@@ -77,6 +88,33 @@ class ItemViews {
     }
   }
 
+  /// The backlog state a wish takes when the home list moves it to tab
+  /// [tabIndex] by date: Next Week → Next, Next Month and Future → Someday.
+  /// Null for Today to Day After — those moves only change its due date, as
+  /// for any other task. (Wishes sit in the home tabs by due date like every
+  /// task; only a move this far out also changes their state.)
+  static String? backlogStateForTab(int tabIndex) {
+    if (tabIndex == 3) return BacklogStates.next;
+    if (tabIndex > 3) return BacklogStates.someday;
+    return null;
+  }
+
+  /// Applies [backlogStateForTab] to [task] after the home list moved its due
+  /// date: a wish now in Next Week or further gets that state. Returns the
+  /// new state, or null when nothing changed (not a wish, a near move, or
+  /// already in that state).
+  static String? syncBacklogStateToDueDate(Task task, DateTime today) {
+    if (!task.isWish) return null;
+    var tab = 0;
+    while (tab < futureTabIndex && !inHomeBucket(task, tab, today)) {
+      tab++;
+    }
+    final state = backlogStateForTab(tab);
+    if (state == null || backlogStateOf(task) == state) return null;
+    setBacklogState(task, state);
+    return state;
+  }
+
   /// Synthetic view-membership tokens for [task] — layered onto its real
   /// label tokens (see [passesFilterRules]) so a Filtering Rules exclude/
   /// include tag can reference a task's state even though that state isn't a
@@ -97,6 +135,7 @@ class ItemViews {
     if (isDemoSeedDescription(task.description)) tags.add(demoToken);
     if (task.isEatingHabit) tags.add(fooddiaryToken);
     if (task.isResearch) tags.add(researchToken);
+    if (task.isGrocery) tags.add(groceriesToken);
     if (task.projectId != null) tags.add(projectToken);
     if (!isApproved(task)) tags.add(waitingApprovalToken);
     if (archived) tags.add(archivedToken);
@@ -200,15 +239,48 @@ class ItemViews {
   /// [homeVisible] — so a filter rule can never apply to one and not the
   /// other (0.2.46: the schedule view used to skip [rules] entirely, which
   /// leaked demo/wish/project items onto a phone that starts in that view).
+  ///
+  /// [contexts] are the regular home page's Todo/MLR/Lemmon/Backlog toggles:
+  /// they lift the matching work-context gate (for Backlog: the Home rules'
+  /// `Wish` exclude tag) *and* narrow to the chosen contexts, inside this
+  /// same gate rather than as a second filter. Null
+  /// (the tool instances, and every non-home caller) means "no toggles".
   static bool isOnHomeScreen(
     Task task, {
     bool Function(Task task)? where,
     ViewFilterRules? rules,
     bool includeWorklistItems = false,
-  }) =>
-      isVisibleInMainViews(task, includeWorklistItems: includeWorklistItems) &&
-      (where == null || where(task)) &&
-      passesFilterRules(task, rules);
+    HomeContexts? contexts,
+  }) {
+    // With toggles, they alone decide context membership (the default
+    // toggles — Todo only — hide every MLR/Lemmon item, exactly like the
+    // plain gate below); the rest of the structural gate still applies.
+    final visible = contexts != null
+        ? contexts.allows(task) &&
+            isVisibleInMainViews(task, includeWorklistItems: true)
+        : isVisibleInMainViews(task,
+            includeWorklistItems: includeWorklistItems);
+    // The Backlog toggle shows wishes, which the Home rules hide by default
+    // (a `Wish` exclude tag) — the toggle lifts just that one tag for them.
+    final effectiveRules = contexts != null && contexts.backlog && task.isWish
+        ? _withoutExcludeTag(rules, wishToken)
+        : rules;
+    return visible &&
+        (where == null || where(task)) &&
+        passesFilterRules(task, effectiveRules);
+  }
+
+  static ViewFilterRules? _withoutExcludeTag(
+      ViewFilterRules? rules, String tag) {
+    if (rules == null) return null;
+    final lower = tag.toLowerCase();
+    if (!rules.excludeTags.any((t) => t.toLowerCase() == lower)) return rules;
+    return ViewFilterRules(
+      excludeTags:
+          rules.excludeTags.where((t) => t.toLowerCase() != lower).toList(),
+      includeTags: rules.includeTags,
+    );
+  }
 
   /// Every task the home screen may show, unbucketed and in list order —
   /// what the schedule view renders as one long day-grouped list. Same gate
@@ -218,12 +290,14 @@ class ItemViews {
     bool Function(Task task)? where,
     ViewFilterRules? rules,
     bool includeWorklistItems = false,
+    HomeContexts? contexts,
   }) =>
       tasks
           .where((t) => isOnHomeScreen(t,
               where: where,
               rules: rules,
-              includeWorklistItems: includeWorklistItems))
+              includeWorklistItems: includeWorklistItems,
+              contexts: contexts))
           .toList();
 
   /// The tasks of home tab [tabIndex], sorted like the home list (open
@@ -239,13 +313,15 @@ class ItemViews {
     bool Function(Task task)? where,
     ViewFilterRules? rules,
     bool includeWorklistItems = false,
+    HomeContexts? contexts,
   }) {
     final list = tasks
         .where((t) =>
             isOnHomeScreen(t,
                 where: where,
                 rules: rules,
-                includeWorklistItems: includeWorklistItems) &&
+                includeWorklistItems: includeWorklistItems,
+                contexts: contexts) &&
             inHomeBucket(t, tabIndex, today))
         .toList();
     sortTasks(list);
@@ -281,6 +357,17 @@ class ItemViews {
       tasks
           .where((t) =>
               t.isResearch && isApproved(t) && passesFilterRules(t, rules))
+          .toList();
+
+  /// The Groceries tool: grocery-flagged tasks, gated like the Research
+  /// tool ([isApproved] only, since [isVisibleInMainViews] excludes them).
+  static List<Task> groceries(List<Task> tasks, {ViewFilterRules? rules}) =>
+      tasks
+          .where((t) =>
+              t.isGrocery &&
+              t.deletedAt == null &&
+              isApproved(t) &&
+              passesFilterRules(t, rules))
           .toList();
 
   /// All non-deleted tasks (the Projects page's top pane).

@@ -18,6 +18,7 @@ import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
+import 'ui/web_approvals_site.dart';
 import 'ui/web_data_choice_page.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
@@ -120,11 +121,20 @@ Future<void> alarmWidgetBackgroundCallback(Uri? uri) async {
   final id = uri.queryParameters['id'];
   if (id == null || id.isEmpty) return;
   if (uri.scheme == TaskWidgetService.scheme) {
-    if (uri.host != TaskWidgetService.hostToggle) return;
+    if (uri.host != TaskWidgetService.hostToggle &&
+        uri.host != TaskWidgetService.hostComplete) {
+      return;
+    }
     // Settings decide what the widget redraws afterwards (progress line,
     // checkbox rows), and this isolate has not loaded them.
     await Config.load();
-    await TaskWidgetService.toggleInStorage(id);
+    if (uri.host == TaskWidgetService.hostComplete) {
+      // The Wear OS companion's "done" while the app isn't running
+      // (WearCommandService.kt): complete only, never un-complete.
+      await TaskWidgetService.completeInStorage(id);
+    } else {
+      await TaskWidgetService.toggleInStorage(id);
+    }
     return;
   }
   if (uri.host == AlarmWidgetService.hostToggle) {
@@ -149,6 +159,17 @@ Future<void> _initStep(String label, Future<void> Function() step) async {
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
+  // The approvals website (SPEC §4.2k) is its own small app: none of the
+  // phone's startup (backups, alarms, widgets, updates) runs there.
+  if (kIsWeb && Config.webApprovalsSite) {
+    await _initStep('config', Config.load);
+    runApp(const WebApprovalsSiteApp());
+    return;
+  }
+  // The full backup (Download/BestToDo/Backups, before every update) first:
+  // it tells a new install (nothing in SharedPreferences yet) to offer a
+  // restore after the first frame.
+  await _initStep('backup', AppUpdates.createBackup);
   await _initStep('config', Config.load);
   await _initStep('notifications', NotificationService.initialize);
   if (!kIsWeb) {
@@ -270,7 +291,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       AppUpdates.promptAllowed.value = !busy;
       if (!start) return;
       final context = appNavigatorKey.currentContext;
-      if (context != null) AppUpdates.start(context);
+      if (context == null) return;
+      AppUpdates.start(context);
+      // A new install asks once whether to restore a full backup.
+      unawaited(AppUpdates.backup?.offerRestore(context));
     });
   }
 

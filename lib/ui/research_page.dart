@@ -10,8 +10,11 @@ import '../models/view_filter_rules.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/recurrence_service.dart';
+import '../services/voice_inbox_service.dart';
 import '../utils/date_utils.dart';
+import '../utils/voice_inbox.dart';
 import 'label_picker.dart';
+import 'research_questions_page.dart';
 import 'recurrence_scope_dialog.dart';
 import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
@@ -23,6 +26,11 @@ import 'task_tile.dart';
 /// from the Waiting for Approval page's "Research" quick tag. Entries never
 /// appear on the home tabs, the schedule view, projects or Todoist — see
 /// [ItemViews.research].
+///
+/// Entries are grouped by state — **Active**, **Next**, **Someday** (stored
+/// as the wishlist's release tokens, see [backlogStateOf]) and **Done** for
+/// checked-off ones — newest first within a section. Each card's "Move to"
+/// button changes the state. The due date is kept but not shown.
 ///
 /// Each entry is rendered with the very same [TaskTile] the home tabs use,
 /// so a research item has every field a normal item has — done checkbox,
@@ -70,6 +78,126 @@ class _ResearchPageState extends State<ResearchPage> {
       _archivedOrBinned = [...deleted, ...bin];
       _loading = false;
     });
+    unawaited(_checkReplies());
+  }
+
+  /// Whether a reply check is running (app-bar spinner).
+  bool _checking = false;
+
+  /// Reads the Todoist comments of every item waiting for the research
+  /// routine ([VoiceInboxService.isWaiting]) — questions, or the finished
+  /// page's link — and saves what changed.
+  Future<void> _checkReplies({bool manual = false}) async {
+    if (!VoiceInboxService.isConfigured || _checking) return;
+    final waiting =
+        ItemViews.research(_tasks).where(VoiceInboxService.isWaiting).toList();
+    if (waiting.isEmpty) {
+      if (manual && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Nothing is waiting for Claude')));
+      }
+      return;
+    }
+    setState(() => _checking = true);
+    var changed = false;
+    for (final task in waiting) {
+      try {
+        changed = await VoiceInboxService.instance.refresh(task) || changed;
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() => _checking = false);
+    if (changed) await _save();
+  }
+
+  /// Starts the Claude research round for [entry] (Active, configured).
+  Future<void> _startResearch(Task entry) async {
+    setState(() => VoiceInboxService.markResearchRequested(entry));
+    await _save();
+    final service = VoiceInboxService.instance;
+    final error = await service.runFire(entry,
+        () => service.fireResearchQuestions(entry),
+        (t) => t.researchStage = null);
+    if (!mounted) return;
+    await _reloadKeepingUi();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error ?? 'Asked Claude — its questions will show here')));
+  }
+
+  /// Re-reads the list after a fire (its sync may have pulled changes).
+  Future<void> _reloadKeepingUi() async {
+    final tasks = await _repository.loadItems();
+    if (!mounted) return;
+    setState(() => _tasks = tasks);
+  }
+
+  Future<void> _answerQuestions(Task entry) async {
+    final answers = await Navigator.of(context).push<List<String>>(
+      MaterialPageRoute(builder: (_) => ResearchQuestionsPage(task: entry)),
+    );
+    if (answers == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await VoiceInboxService.instance.sendAnswers(entry, answers);
+    } catch (e) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Couldn\'t send the answers — try again')));
+      return;
+    }
+    await _reloadKeepingUi();
+    final stored = _findTaskByUid(entry.uid);
+    if (stored != null) {
+      setState(() => stored.researchStage = ResearchStages.answered);
+      await _save();
+    }
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Answers sent — Claude is writing the research page')));
+  }
+
+  /// The research-round line under an Active item's tile.
+  Widget? _buildResearchStatus(Task entry) {
+    if (entry.isDone || backlogStateOf(entry) != BacklogStates.active) {
+      return null;
+    }
+    final theme = Theme.of(context);
+    final style = theme.textTheme.bodySmall
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    Widget line(IconData icon, String text) => Row(children: [
+          Icon(icon, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(child: Text(text, style: style)),
+        ]);
+    switch (entry.researchStage) {
+      case ResearchStages.requested:
+        return line(Icons.hourglass_top, 'Claude is preparing questions…');
+      case ResearchStages.questions:
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonalIcon(
+            onPressed: () => _answerQuestions(entry),
+            icon: const Icon(Icons.question_answer_outlined),
+            label: Text(entry.researchQuestions.length == 1
+                ? 'Answer 1 question'
+                : 'Answer ${entry.researchQuestions.length} questions'),
+          ),
+        );
+      case ResearchStages.answered:
+        return line(Icons.auto_awesome, 'Claude is writing the research page…');
+      case ResearchStages.ready:
+        return null; // the tile's "Open in Obsidian" says it all
+    }
+    if (!VoiceInboxService.isConfigured || entry.obsidianLink != null) {
+      return null;
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: () => _startResearch(entry),
+        icon: const Icon(Icons.auto_awesome),
+        label: const Text('Start research with Claude'),
+      ),
+    );
   }
 
   Future<void> _save() async {
@@ -92,6 +220,76 @@ class _ResearchPageState extends State<ResearchPage> {
       return bTime.compareTo(aTime);
     });
     return entries;
+  }
+
+  /// Moves [entry] to [state] (Active / Next / Someday).
+  ///
+  /// Moving an item to Active starts its Claude research round when the
+  /// voice-inbox routine is set up and the item has none yet.
+  void _setState(Task entry, String state) {
+    setState(() => setBacklogState(entry, state));
+    if (state == BacklogStates.active &&
+        VoiceInboxService.isConfigured &&
+        entry.researchStage == null &&
+        entry.obsidianLink == null) {
+      _startResearch(entry);
+      return;
+    }
+    _save();
+  }
+
+  /// [_entries] split into the page's sections, in display order; empty
+  /// sections are left out.
+  List<MapEntry<String, List<Task>>> _sections() {
+    final entries = _entries();
+    final done = entries.where((t) => t.isDone).toList();
+    return [
+      for (final state in BacklogStates.all)
+        MapEntry(
+          BacklogStates.title(state),
+          entries
+              .where((t) => !t.isDone && backlogStateOf(t) == state)
+              .toList(),
+        ),
+      MapEntry('Done', done),
+    ].where((e) => e.value.isNotEmpty).toList();
+  }
+
+  Widget _buildCard(Task entry) {
+    return Card(
+      key: ValueKey('research-${entry.uid}'),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildTile(entry),
+                if (_buildResearchStatus(entry) case final status?)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+                    child: status,
+                  ),
+              ],
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Move to',
+            icon: const Icon(Icons.swap_vert),
+            onSelected: (state) => _setState(entry, state),
+            itemBuilder: (context) => [
+              for (final state in BacklogStates.all)
+                CheckedPopupMenuItem(
+                  value: state,
+                  checked: backlogStateOf(entry) == state,
+                  child: Text(BacklogStates.title(state)),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _addEntry() async {
@@ -390,9 +588,26 @@ class _ResearchPageState extends State<ResearchPage> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = _entries();
+    final sections = _sections();
+    final theme = Theme.of(context);
     return Scaffold(
-      appBar: buildSubpageAppBar(context, title: 'Research'),
+      appBar: buildSubpageAppBar(
+        context,
+        title: 'Research',
+        actions: [
+          if (VoiceInboxService.isConfigured)
+            IconButton(
+              tooltip: "Check Claude's replies",
+              icon: _checking
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.mark_chat_read_outlined),
+              onPressed: () => _checkReplies(manual: true),
+            ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         tooltip: 'Add research item',
         onPressed: _addEntry,
@@ -400,7 +615,7 @@ class _ResearchPageState extends State<ResearchPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : entries.isEmpty
+          : sections.isEmpty
               ? const Center(
                   child: Padding(
                     padding: EdgeInsets.all(24),
@@ -412,13 +627,21 @@ class _ResearchPageState extends State<ResearchPage> {
                     ),
                   ),
                 )
-              : ListView.builder(
+              : ListView(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) => Card(
-                    key: ValueKey('research-${entries[index].uid}'),
-                    child: _buildTile(entries[index]),
-                  ),
+                  children: [
+                    for (final section in sections) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                        child: Text(
+                          '${section.key} (${section.value.length})',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      for (final entry in section.value) _buildCard(entry),
+                    ],
+                  ],
                 ),
     );
   }

@@ -115,7 +115,20 @@ final List<SuiteRule> suiteRules = [
     'lib/services/todoist_api_client.dart', 'lib/services/todoist_metadata_codec.dart', 'lib/models/sync_log_entry.dart',
     'lib/models/todoist_sync_map_entry.dart', 'lib/ui/waiting_approval_page.dart', 'lib/ui/app_logs_page.dart',
   ], {'sync', 'home'}),
+  // The approvals website (SPEC §4.2k): vault, merge/lock coordinator, lock
+  // screen — all in test/sync/web_approvals_test.dart.
+  SuiteRule(['lib/services/web_approvals/', 'lib/ui/web_approvals_site.dart',
+    'lib/ui/web_data_choice_page.dart', 'tool/harden_approvals_site.dart'], {'sync'}),
   SuiteRule(['lib/ui/remaining_time_text.dart'], {'sync', 'home', 'tools'}),
+  // The voice inbox: marker contract (sync), the approval page's groups and
+  // the home toggles (home), Groceries/Research/Wishlist (tools).
+  SuiteRule(['lib/utils/voice_inbox.dart'], {'sync', 'home', 'tools'}),
+  SuiteRule(['lib/models/home_contexts.dart'], {'home', 'sync'}),
+  SuiteRule(['lib/services/grocery_category_service.dart', 'lib/ui/groceries_page.dart'],
+      {'tools', 'sync', 'home'}),
+  SuiteRule(['lib/ui/obsidian_link_button.dart', 'lib/ui/research_page.dart',
+      'lib/ui/research_questions_page.dart'], {'tools', 'home'}),
+  SuiteRule(['lib/services/voice_inbox_service.dart'], {'sync', 'tools', 'home'}),
   SuiteRule(['lib/services/share_intent_service.dart', 'lib/models/shared_payload.dart', 'lib/ui/quick_add_share_page.dart',
     'ShareActivity.kt', 'MainActivity.kt'], {'share', 'home'}),
   SuiteRule([

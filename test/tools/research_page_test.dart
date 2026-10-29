@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:besttodo/config.dart';
 import 'package:besttodo/models/task.dart';
 import 'package:besttodo/services/storage_service.dart';
+import 'package:besttodo/services/voice_inbox_service.dart';
 import 'package:besttodo/ui/research_page.dart';
 import 'package:besttodo/utils/description_disclosure.dart';
 import 'package:flutter/material.dart';
@@ -184,7 +185,8 @@ void main() {
     expect(saved.single['isResearch'], isTrue);
   });
 
-  testWidgets('a research item with a due date shows it on the tile',
+  testWidgets(
+      'a research item keeps its due date but no longer shows it on the tile',
       (tester) async {
     await pumpResearch(
       tester,
@@ -199,7 +201,7 @@ void main() {
       marker: 'Compare CRDT libraries',
     );
 
-    expect(find.text('Due 2026-10-03'), findsOneWidget);
+    expect(find.text('Due 2026-10-03'), findsNothing);
     // The description sits collapsed under the title, like a wish's.
     expect(find.byType(DescriptionDisclosure), findsOneWidget);
   });
@@ -223,4 +225,133 @@ void main() {
     expect(saved.single['note'], 'Ask Sam about pgvector');
     expect(saved.single['isResearch'], isTrue);
   });
+
+  testWidgets(
+      'items are grouped by state (Active / Next / Someday / Done) and Move '
+      'to changes the state', (tester) async {
+    await pumpResearch(
+      tester,
+      tasks: [
+        Task(title: 'Someday topic', isResearch: true),
+        Task(title: 'Next topic', isResearch: true, label: 'release-soon'),
+        Task(title: 'Active topic', isResearch: true, label: 'release-next'),
+        Task(title: 'Done topic', isResearch: true, isDone: true),
+      ],
+      marker: 'Active topic',
+    );
+    double topOf(String t) => tester.getTopLeft(find.text(t)).dy;
+    expect(find.text('Active (1)'), findsOneWidget);
+    expect(find.text('Next (1)'), findsOneWidget);
+    expect(find.text('Someday (1)'), findsOneWidget);
+    expect(find.text('Done (1)'), findsOneWidget);
+    expect(topOf('Active (1)'), lessThan(topOf('Next (1)')));
+    expect(topOf('Next (1)'), lessThan(topOf('Someday (1)')));
+    expect(topOf('Someday (1)'), lessThan(topOf('Done (1)')));
+    // The state token isn't shown as a label chip.
+    expect(find.text('release-next'), findsNothing);
+
+    await tester.tap(find.byTooltip('Move to').at(2)); // the Someday item
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.widgetWithText(CheckedPopupMenuItem<String>, 'Active'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.text('Active (2)'), findsOneWidget);
+    final saved = await readJsonList(tester, 'tasks.json');
+    final moved = saved.firstWhere((t) => t['title'] == 'Someday topic');
+    expect(moved['label'], 'release-next');
+  });
+
+  group('Claude research round', () {
+    late _FakeVoiceInbox fakeService;
+
+    setUp(() {
+      Config.todoistSyncEnabled = true;
+      Config.todoistApiToken = 't';
+      Config.voiceInboxRoutineUrl = 'https://x/fire';
+      Config.voiceInboxRoutineToken = 'r';
+      fakeService = _FakeVoiceInbox();
+      VoiceInboxService.instance = fakeService;
+    });
+
+    tearDown(() {
+      Config.todoistSyncEnabled = false;
+      Config.todoistApiToken = '';
+      Config.voiceInboxRoutineUrl = '';
+      Config.voiceInboxRoutineToken = '';
+      VoiceInboxService.instance = VoiceInboxService();
+    });
+
+    testWidgets('moving an item to Active starts the research round',
+        (tester) async {
+      await pumpResearch(
+        tester,
+        tasks: [Task(title: 'Heat battery', isResearch: true)],
+        marker: 'Heat battery',
+      );
+      await tester.tap(find.byTooltip('Move to'));
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.widgetWithText(CheckedPopupMenuItem<String>, 'Active'));
+      await tester.pumpAndSettle();
+      await settleWrites(tester);
+
+      expect(fakeService.calls, ['research-questions:Heat battery']);
+      expect(find.text('Claude is preparing questions…'), findsOneWidget);
+      final saved = await readJsonList(tester, 'tasks.json');
+      expect(saved.single['researchStage'], 'requested');
+    });
+
+    testWidgets('questions are answered on the Q&A page and sent back',
+        (tester) async {
+      await pumpResearch(
+        tester,
+        tasks: [
+          Task(
+            title: 'Heat battery',
+            isResearch: true,
+            label: 'release-next',
+            researchStage: ResearchStages.questions,
+            researchQuestions: ['Which size?', 'Which salt?'],
+          ),
+        ],
+        marker: 'Heat battery',
+      );
+      await tester.tap(find.text('Answer 2 questions'));
+      await tester.pumpAndSettle();
+      expect(find.text('1. Which size?'), findsOneWidget);
+      await tester.enterText(
+          find.byKey(const ValueKey('research-answer-0')), '1 m³');
+      await tester.tap(find.text('Send answers'));
+      await tester.pumpAndSettle();
+      await settleWrites(tester);
+
+      expect(fakeService.answers, [
+        ['1 m³', '']
+      ]);
+      expect(find.text('Claude is writing the research page…'), findsOneWidget);
+      final saved = await readJsonList(tester, 'tasks.json');
+      expect(saved.single['researchStage'], 'answered');
+    });
+  });
+}
+
+class _FakeVoiceInbox extends VoiceInboxService {
+  final List<String> calls = [];
+  final List<List<String>> answers = [];
+
+  @override
+  Future<void> fireResearchQuestions(Task task) async =>
+      calls.add('research-questions:${task.title}');
+
+  @override
+  Future<void> fireWritePage(Task task) async =>
+      calls.add('write-page:${task.title}');
+
+  @override
+  Future<void> sendAnswers(Task task, List<String> a) async => answers.add(a);
+
+  @override
+  Future<bool> refresh(Task task) async => false;
 }

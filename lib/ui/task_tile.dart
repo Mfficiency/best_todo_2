@@ -18,6 +18,7 @@ import '../utils/label_utils.dart';
 import '../utils/linkified_text.dart';
 import 'attachments_field.dart';
 import 'label_picker.dart';
+import 'obsidian_link_button.dart';
 import 'recurrence_editor.dart';
 import 'recurrence_scope_dialog.dart';
 import 'task_info_dialog.dart';
@@ -616,18 +617,20 @@ class _TaskTileState extends State<TaskTile>
         .split(RegExp(r'[,\s]+'))
         .map((label) => label.trim())
         .where((label) => label.isNotEmpty)
+        // A Research item's Active/Next/Someday state is stored as a release
+        // token; the Research page's sections already show it.
+        .where((label) =>
+            !task.isResearch ||
+            !releaseGroupTokens.contains(label.toLowerCase()))
         .toList();
-    // A Research item isn't bucketed into a dated tab, so its due date (if
-    // any) is shown on the tile itself, and — like a wish — its description
-    // is shown collapsed under the title.
-    final researchDue = task.isResearch && !Task.isFutureBucketDue(task.dueDate)
-        ? task.dueDate
-        : null;
+    // A Research item — like a wish — shows its description collapsed under
+    // the title. Its due date is kept but no longer shown: the Research page
+    // groups by state (Active / Next / Someday), not by date.
     final researchDescription = task.isResearch && task.description.isNotEmpty;
     if (task.projectId == null &&
         !task.isWish &&
-        researchDue == null &&
         !researchDescription &&
+        task.obsidianLink == null &&
         labels.isEmpty) {
       return null;
     }
@@ -647,8 +650,6 @@ class _TaskTileState extends State<TaskTile>
                   _tag(ProjectService.stageLabel(task.kanbanStatus)),
                 ],
                 if (task.isWish) _tag('wish', protected: true),
-                if (researchDue != null)
-                  _tag('Due ${researchDue.toLocal().toString().split(' ')[0]}'),
                 for (final label in labels)
                   _tag(label, protected: isProtectedToken(label)),
               ],
@@ -656,6 +657,8 @@ class _TaskTileState extends State<TaskTile>
             if ((task.isWish && task.description.isNotEmpty) ||
                 researchDescription)
               DescriptionDisclosure(description: task.description),
+            if (task.obsidianLink != null)
+              ObsidianLinkButton(link: task.obsidianLink!),
           ],
         ),
       ),

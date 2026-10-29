@@ -20,11 +20,13 @@ import '../services/github_wishlist_service.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/shared_wishlist_store.dart';
+import '../services/voice_inbox_service.dart';
 import '../services/wishlist_shipped.dart';
 import '../utils/description_disclosure.dart';
 import '../utils/label_utils.dart';
 import '../utils/wish_priority.dart';
 import 'label_picker.dart';
+import 'obsidian_link_button.dart';
 import 'subpage_app_bar.dart';
 import 'wishlist_sync_banner.dart';
 
@@ -105,17 +107,22 @@ void regressWishReleaseGroup(Task task, String currentVersion) {
 /// undo action.
 const Duration wishlistSweepDelay = Duration(seconds: 8);
 
-/// Section title shown above a group's items.
+/// Section title shown above a group's items. Since the voice inbox the
+/// four groups use the same words as Backlog/Research everywhere else (and
+/// as the vault's project `Status`: Doing / Soon / Someday / Done): "Next
+/// release" — what's being built now — is **Active**, "Soon" is **Next**,
+/// "Backlog" is **Someday**, "Newly implemented" is **Done**. Only the titles
+/// changed; membership still follows the same release tokens.
 String wishReleaseGroupTitle(WishReleaseGroup group) {
   switch (group) {
     case WishReleaseGroup.newlyImplemented:
-      return 'Newly implemented';
+      return 'Done';
     case WishReleaseGroup.nextRelease:
-      return 'Next release';
+      return 'Active';
     case WishReleaseGroup.soon:
-      return 'Soon';
+      return 'Next';
     case WishReleaseGroup.backlog:
-      return 'Backlog';
+      return 'Someday';
   }
 }
 
@@ -259,6 +266,41 @@ class _WishlistPageState extends State<WishlistPage> {
       _loading = false;
       _syncConnected = connected;
     });
+    unawaited(_checkObsidianReplies());
+  }
+
+  /// Picks up the voice-inbox routine's `[Done] <link>` replies for wishes
+  /// whose Obsidian page was requested but hasn't arrived yet.
+  Future<void> _checkObsidianReplies() async {
+    if (!VoiceInboxService.isConfigured) return;
+    final waiting = _tasks
+        .where((t) => t.isWish && VoiceInboxService.isWaiting(t))
+        .toList();
+    var changed = false;
+    for (final task in waiting) {
+      try {
+        changed = await VoiceInboxService.instance.refresh(task) || changed;
+      } catch (_) {}
+    }
+    if (changed && mounted) {
+      setState(() {});
+      await _save();
+    }
+  }
+
+  /// "Create Obsidian page" on an expanded wish: asks the voice-inbox
+  /// routine to write the item's page; the link shows up once it replies.
+  Future<void> _requestObsidianPage(Task item) async {
+    setState(() => VoiceInboxService.markObsidianRequested(item));
+    await _save();
+    final service = VoiceInboxService.instance;
+    final error = await service.runFire(item, () => service.fireWritePage(item),
+        (t) => t.obsidianRequestedAt = null);
+    final tasks = await _repository.loadItems();
+    if (!mounted) return;
+    setState(() => _tasks = tasks);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error ?? 'Asked Claude to write the Obsidian page')));
   }
 
   Future<void> _save() async {
@@ -820,6 +862,10 @@ class _WishlistPageState extends State<WishlistPage> {
                                   onRegressRelease: () => _regressRelease(item),
                                   onSetReleaseGroup: (newGroup) =>
                                       _setReleaseGroup(item, newGroup),
+                                  onRequestObsidianPage:
+                                      VoiceInboxService.isConfigured
+                                          ? () => _requestObsidianPage(item)
+                                          : null,
                                 ),
                             ],
                         ],
@@ -1041,6 +1087,10 @@ class _WishTile extends StatefulWidget {
   final VoidCallback onRegressRelease;
   final void Function(WishReleaseGroup group) onSetReleaseGroup;
 
+  /// "Create Obsidian page" in the expanded fields; null when the voice-inbox
+  /// routine isn't set up.
+  final VoidCallback? onRequestObsidianPage;
+
   const _WishTile({
     Key? key,
     required this.item,
@@ -1058,6 +1108,7 @@ class _WishTile extends StatefulWidget {
     required this.onSendToBuild,
     required this.onRegressRelease,
     required this.onSetReleaseGroup,
+    this.onRequestObsidianPage,
   }) : super(key: key);
 
   @override
@@ -1300,6 +1351,20 @@ class _WishTileState extends State<_WishTile>
               onChanged: (v) => setState(() => widget.item.description = v),
             ),
           ),
+          if (widget.onRequestObsidianPage != null &&
+              widget.item.obsidianLink == null) ...[
+            const SizedBox(height: 8),
+            widget.item.obsidianRequestedAt == null
+                ? TextButton.icon(
+                    onPressed: widget.onRequestObsidianPage,
+                    icon: const Icon(Icons.description_outlined),
+                    label: const Text('Create Obsidian page'),
+                  )
+                : Text(
+                    'Claude is writing the Obsidian page…',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+          ],
         ],
       ),
     );
@@ -1330,7 +1395,9 @@ class _WishTileState extends State<_WishTile>
           decoration: widget.item.isDone ? TextDecoration.lineThrough : null,
         ),
       ),
-      subtitle: widget.item.description.isEmpty && labels.isEmpty
+      subtitle: widget.item.description.isEmpty &&
+              labels.isEmpty &&
+              widget.item.obsidianLink == null
           ? null
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1355,6 +1422,8 @@ class _WishTileState extends State<_WishTile>
                   const SizedBox(height: 4),
                   DescriptionDisclosure(description: widget.item.description),
                 ],
+                if (widget.item.obsidianLink != null)
+                  ObsidianLinkButton(link: widget.item.obsidianLink!),
               ],
             ),
       // Tapping folds the tile open for inline editing, exactly like a home

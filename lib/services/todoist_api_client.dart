@@ -178,5 +178,36 @@ class TodoistApiClient {
     _decode(response);
   }
 
+  /// Every comment on task [taskId], oldest first — the voice-inbox
+  /// routine's channel back to the app (`[Questions]`, `[Done] <link>`).
+  Future<List<Map<String, dynamic>>> fetchComments(String taskId) async {
+    final results = <Map<String, dynamic>>[];
+    String? cursor;
+    while (true) {
+      final uri = Uri.parse('$baseUrl/comments').replace(queryParameters: {
+        'task_id': taskId,
+        if (cursor != null) 'cursor': cursor,
+      });
+      final data = _decode(await _client.get(uri, headers: _headers));
+      final page = data is Map ? Map<String, dynamic>.from(data) : const {};
+      results.addAll((page['results'] as List? ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e)));
+      cursor = page['next_cursor'] as String?;
+      if (cursor == null) break;
+    }
+    return results;
+  }
+
+  /// Adds a comment to task [taskId].
+  Future<void> addComment(String taskId, String content) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/comments'),
+      headers: _headers,
+      body: jsonEncode({'task_id': taskId, 'content': content}),
+    );
+    _decode(response);
+  }
+
   void close() => _client.close();
 }

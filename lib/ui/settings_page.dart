@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
@@ -70,13 +71,13 @@ class _SettingsPageState extends State<SettingsPage> {
     'Dice timer',
     'SMS report',
     'Widget',
-    'Updates',
     'Todoist sync',
     'Sync & export',
-    'Backup',
     'Weekly Hours Planner',
     'Wishlist build',
     'Claude Routine',
+    'Updates',
+    'Backup & data',
   ];
 
   /// Sections currently on screen, in order. A section belonging to a feature
@@ -95,7 +96,7 @@ class _SettingsPageState extends State<SettingsPage> {
         return Config.isFeatureEnabled('dice_timer');
       case 7:
         return Config.isFeatureEnabled('sms_report');
-      case 13:
+      case 11:
         return Config.isFeatureEnabled('weekly_hours_planner');
       default:
         return true;
@@ -123,8 +124,9 @@ class _SettingsPageState extends State<SettingsPage> {
     for (var i = 0; i < _sectionTitles.length; i++) i,
   };
 
-  static const double _tabsHeaderHeight = 60;
+  static const double _tabsHeaderHeight = 64;
   static const double _sectionActivationOffset = 56;
+  static const double _contentMaxWidth = 820;
   double _lastScrollOffset = 0;
 
   // Search over the settings entries themselves (independent from the task
@@ -206,40 +208,46 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Message template', 7, 'sms tokens text'),
     _SettingsSearchEntry('Sent message history', 7, 'sms log'),
     _SettingsSearchEntry('Send test now', 7, 'sms report'),
-    _SettingsSearchEntry('Synced mode', 11,
+    _SettingsSearchEntry('Synced mode', 10,
         'sync offline folder background quit backup automatic tasks'),
-    _SettingsSearchEntry('Sync folder', 11, 'sync directory location choose'),
-    _SettingsSearchEntry('Sync now', 11, 'sync manual run last synced'),
-    _SettingsSearchEntry('Export Tasks', 11, 'backup save json'),
-    _SettingsSearchEntry('Export Settings', 11, 'backup save json'),
-    _SettingsSearchEntry('Export Everything', 11, 'backup save json'),
-    _SettingsSearchEntry('Import', 11, 'restore backup load json'),
-    _SettingsSearchEntry('Automatic backup', 12,
+    _SettingsSearchEntry('Sync folder', 10, 'sync directory location choose'),
+    _SettingsSearchEntry('Sync now', 10, 'sync manual run last synced'),
+    _SettingsSearchEntry('Export Tasks', 10, 'backup save json'),
+    _SettingsSearchEntry('Export Settings', 10, 'backup save json'),
+    _SettingsSearchEntry('Export Everything', 10, 'backup save json'),
+    _SettingsSearchEntry('Import', 10, 'restore backup load json'),
+    _SettingsSearchEntry('Back up everything', 15,
+        'full backup downloads update uninstall reinstall all data'),
+    _SettingsSearchEntry('Restore from a backup', 15,
+        'full backup downloads import reinstall all data'),
+    _SettingsSearchEntry('Automatic backup', 15,
         'daily weekly schedule export save everything off'),
-    _SettingsSearchEntry('Backup folder', 12, 'directory location path choose'),
-    _SettingsSearchEntry('Back up now', 12, 'manual backup export run'),
+    _SettingsSearchEntry('Backup folder', 15, 'directory location path choose'),
+    _SettingsSearchEntry('Back up now', 15, 'manual backup export run'),
     _SettingsSearchEntry(
-        'Enable Todoist sync', 10, 'two-way api key token integration'),
-    _SettingsSearchEntry('Todoist API token', 10, 'key integration secret'),
-    _SettingsSearchEntry('Sync with Todoist now', 10, 'manual run two-way'),
-    _SettingsSearchEntry('Automatically update', 9,
+        'Enable Todoist sync', 9, 'two-way api key token integration'),
+    _SettingsSearchEntry('Todoist API token', 9, 'key integration secret'),
+    _SettingsSearchEntry('Sync with Todoist now', 9, 'manual run two-way'),
+    _SettingsSearchEntry('Automatically update', 14,
         'auto update version release new build startup prompt install about'),
-    _SettingsSearchEntry('Check for updates', 9,
+    _SettingsSearchEntry('Check for updates', 14,
         'update version release new build download install now'),
+    _SettingsSearchEntry('GitHub token (optional)', 9,
+        'update private repository key secret access'),
     _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist approval waiting for approval projects archived '
         'deleted bin hide show tag exclude include only filter built in'),
-    _SettingsSearchEntry('Google Calendar URL', 13,
+    _SettingsSearchEntry('Google Calendar URL', 11,
         'ics import feed link sync events weekly hours planner overlay calendar'),
-    _SettingsSearchEntry('Weekly Hours Planner start hour', 13,
+    _SettingsSearchEntry('Weekly Hours Planner start hour', 11,
         'grid hour range day begin flexitime'),
-    _SettingsSearchEntry('Weekly Hours Planner end hour', 13,
+    _SettingsSearchEntry('Weekly Hours Planner end hour', 11,
         'grid hour range day end flexitime'),
-    _SettingsSearchEntry('GitHub token', 14,
+    _SettingsSearchEntry('GitHub token', 12,
         'wishlist build automation issue pat personal access token next build'),
-    _SettingsSearchEntry('Routine fire URL', 15,
+    _SettingsSearchEntry('Routine fire URL', 13,
         'claude code routine send to claude session cloud trigger api'),
-    _SettingsSearchEntry('Routine token', 15,
+    _SettingsSearchEntry('Routine token', 13,
         'claude code routine send to claude session cloud trigger api key'),
   ];
 
@@ -306,11 +314,20 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _githubTesting = false;
   String? _githubTestResult;
   bool _githubTestSucceeded = false;
+
+  /// A GitHub token for the updater is saved (secure storage; the value
+  /// itself is never kept here). Loaded in [initState].
+  bool _updateTokenSet = false;
   final TextEditingController _claudeRoutineUrlController =
       TextEditingController(text: Config.claudeRoutineUrl);
   final TextEditingController _claudeRoutineTokenController =
       TextEditingController(text: Config.claudeRoutineToken);
   bool _claudeRoutineTokenObscured = true;
+  final TextEditingController _voiceInboxUrlController =
+      TextEditingController(text: Config.voiceInboxRoutineUrl);
+  final TextEditingController _voiceInboxTokenController =
+      TextEditingController(text: Config.voiceInboxRoutineToken);
+  bool _voiceInboxTokenObscured = true;
   int _weeklyHoursStartHour = Config.weeklyHoursStartHour;
   int _weeklyHoursEndHour = Config.weeklyHoursEndHour;
   final TextEditingController _googleCalendarUrlController =
@@ -368,6 +385,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _githubTokenController.text = Config.githubWishlistToken;
     _claudeRoutineUrlController.text = Config.claudeRoutineUrl;
     _claudeRoutineTokenController.text = Config.claudeRoutineToken;
+    _voiceInboxUrlController.text = Config.voiceInboxRoutineUrl;
+    _voiceInboxTokenController.text = Config.voiceInboxRoutineToken;
     _autoUpdateCheckEnabled = Config.autoUpdateCheckEnabled;
     _deletedItemsRetentionDays = Config.deletedItemsRetentionDays;
     _weeklyHoursStartHour = Config.weeklyHoursStartHour;
@@ -382,6 +401,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadSmsConfig();
     _loadLastAutoBackup();
     _loadGoogleCalendarStatus();
+    _loadUpdateToken();
     // Lazy, fire-and-forget: the "Sync now" tile shows the last sync from the
     // persisted history once it arrives.
     unawaited(SyncService.instance.ensureLoaded());
@@ -817,7 +837,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final collapsed = _collapsedSections.contains(index);
     return Container(
       key: _sectionKeys[index],
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 4),
       child: Card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -850,6 +870,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             if (!collapsed) ...children,
+            if (!collapsed) const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1506,7 +1527,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildExportSection() {
     return _buildSection(
-      index: 11,
+      index: 10,
       title: 'Sync & export',
       children: [
         SwitchListTile(
@@ -1672,9 +1693,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildBackupSection() {
     final folderChosen = _autoBackupDirectory.isNotEmpty;
     return _buildSection(
-      index: 12,
-      title: 'Backup',
+      index: 15,
+      title: 'Backup & data',
       children: [
+        // Everything to Download/BestToDo/Backups (also before every
+        // update), and restore from such a file. Android only.
+        if (AppUpdates.backup case final backup?)
+          FullBackupTiles(backup: backup),
         ListTile(
           title: const Text('Automatic backup'),
           subtitle: Text(switch (_autoBackupFrequency) {
@@ -1798,7 +1823,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildWeeklyHoursPlannerSection() {
     return _buildSection(
-      index: 13,
+      index: 11,
       title: 'Weekly Hours Planner',
       children: [
         Padding(
@@ -1998,7 +2023,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildTodoistSyncSection() {
     return _buildSection(
-      index: 10,
+      index: 9,
       title: 'Todoist sync',
       children: [
         SwitchListTile(
@@ -2202,6 +2227,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _saveClaudeRoutine() async {
     Config.claudeRoutineUrl = _claudeRoutineUrlController.text.trim();
     Config.claudeRoutineToken = _claudeRoutineTokenController.text.trim();
+    Config.voiceInboxRoutineUrl = _voiceInboxUrlController.text.trim();
+    Config.voiceInboxRoutineToken = _voiceInboxTokenController.text.trim();
     await Config.save();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2216,7 +2243,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// `.claude/notes/automation.md`.
   Widget _buildWishlistBuildSection() {
     return _buildSection(
-      index: 14,
+      index: 12,
       title: 'Wishlist build',
       children: [
         const Padding(
@@ -2299,7 +2326,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// generated URL and token here.
   Widget _buildClaudeRoutineSection() {
     return _buildSection(
-      index: 15,
+      index: 13,
       title: 'Claude Routine',
       children: [
         const Padding(
@@ -2345,6 +2372,48 @@ class _SettingsPageState extends State<SettingsPage> {
             onSubmitted: (_) => _saveClaudeRoutine(),
           ),
         ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Text(
+            'Voice inbox routine (optional): the routine that writes Obsidian '
+            'pages for approved Backlog items and runs Research "Active" '
+            'question rounds. It answers through Todoist, so Todoist sync '
+            'must be on too. See docs/proposals/voice-inbox-routine.md.',
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _voiceInboxUrlController,
+            decoration: const InputDecoration(
+              labelText: 'Voice inbox routine fire URL',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _saveClaudeRoutine(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _voiceInboxTokenController,
+            obscureText: _voiceInboxTokenObscured,
+            decoration: InputDecoration(
+              labelText: 'Voice inbox routine token',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip: _voiceInboxTokenObscured
+                    ? 'Show voice inbox token'
+                    : 'Hide voice inbox token',
+                icon: Icon(_voiceInboxTokenObscured
+                    ? Icons.visibility
+                    : Icons.visibility_off),
+                onPressed: () => setState(() =>
+                    _voiceInboxTokenObscured = !_voiceInboxTokenObscured),
+              ),
+            ),
+            onSubmitted: (_) => _saveClaudeRoutine(),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: FilledButton.icon(
@@ -2367,9 +2436,39 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
+  Future<void> _loadUpdateToken() async {
+    final set = await AppUpdates.readToken() != null;
+    if (!mounted) return;
+    setState(() => _updateTokenSet = set);
+  }
+
+  /// Settings → Updates → GitHub token: paste, replace or remove the
+  /// updater's token (secure storage), then the controller reads it again.
+  Future<void> _editUpdateToken() async {
+    final result = await showDialog<_UpdateTokenAction>(
+      context: context,
+      builder: (_) => _UpdateTokenDialog(hasToken: _updateTokenSet),
+    );
+    if (result == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await AppUpdates.saveToken(result.token);
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('Could not save the token: $e')));
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _updateTokenSet = result.token != null);
+    messenger.showSnackBar(SnackBar(
+        content: Text(result.token != null
+            ? 'GitHub token saved; checking for updates'
+            : 'GitHub token removed')));
+  }
+
   Widget _buildUpdatesSection() {
     return _buildSection(
-      index: 9,
+      index: 14,
       title: 'Updates',
       children: [
         SwitchListTile(
@@ -2386,6 +2485,16 @@ class _SettingsPageState extends State<SettingsPage> {
         // Checks now; a newer build downloads silently, then Android asks.
         if (AppUpdates.controller case final updates?)
           UpdateCheckTile(controller: updates),
+        ListTile(
+          leading: const Icon(Icons.key),
+          title: const Text('GitHub token (optional)'),
+          subtitle: Text(_updateTokenSet
+              ? 'Saved on this phone (••••••••). Only needed if this '
+                  "app's repo is private."
+              : "Only needed if this app's repo is private."),
+          trailing: Text(_updateTokenSet ? 'Replace' : 'Add'),
+          onTap: _editUpdateToken,
+        ),
       ],
     );
   }
@@ -2743,6 +2852,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _githubTokenController.dispose();
     _claudeRoutineUrlController.dispose();
     _claudeRoutineTokenController.dispose();
+    _voiceInboxUrlController.dispose();
+    _voiceInboxTokenController.dispose();
     _jevApiKeyController.dispose();
     _googleCalendarUrlController.dispose();
     for (final controller in _filterTagControllers.values) {
@@ -2754,6 +2865,8 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final showSearchResults = _searchActive && _searchQuery.trim().isNotEmpty;
+    final sidePadding = math.max(
+        12.0, (MediaQuery.sizeOf(context).width - _contentMaxWidth) / 2);
     return Scaffold(
       appBar: buildSubpageAppBar(
         context,
@@ -2804,8 +2917,11 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
+          // Content centred at most [_contentMaxWidth] wide, as in the
+          // other apps; padding (not a box around the list) keeps the
+          // SliverList lazy, which [_jumpToSection] relies on.
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+            padding: EdgeInsets.fromLTRB(sidePadding, 12, sidePadding, 16),
             sliver: SliverList(
               delegate: SliverChildListDelegate(
                 showSearchResults
@@ -3261,14 +3377,16 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
-                        _buildUpdatesSection(),
                         _buildTodoistSyncSection(),
                         _buildExportSection(),
-                        _buildBackupSection(),
-                        if (_isSectionVisible(13))
+                        if (_isSectionVisible(11))
                           _buildWeeklyHoursPlannerSection(),
                         _buildWishlistBuildSection(),
                         _buildClaudeRoutineSection(),
+                        _buildUpdatesSection(),
+                        _buildBackupSection(),
+                        // Room so the last section can scroll to the top.
+                        const SizedBox(height: 200),
                       ],
               ),
             ),
@@ -3317,5 +3435,93 @@ class _SettingsTabsHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _SettingsTabsHeaderDelegate oldDelegate) {
     return oldDelegate.height != height || oldDelegate.child != child;
+  }
+}
+
+/// What [_UpdateTokenDialog] returns: a token to save, or null to remove.
+class _UpdateTokenAction {
+  const _UpdateTokenAction(this.token);
+  final String? token;
+}
+
+/// Paste / replace / remove the updater's GitHub token. Owns its controller
+/// (disposing one right after `showDialog` returns breaks the exit
+/// animation). The saved value is never shown; the field starts empty.
+class _UpdateTokenDialog extends StatefulWidget {
+  const _UpdateTokenDialog({required this.hasToken});
+  final bool hasToken;
+
+  @override
+  State<_UpdateTokenDialog> createState() => _UpdateTokenDialogState();
+}
+
+class _UpdateTokenDialogState extends State<_UpdateTokenDialog> {
+  final TextEditingController _controller = TextEditingController();
+  bool _obscured = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final t = _controller.text.trim();
+    if (t.isEmpty) return;
+    Navigator.of(context).pop(_UpdateTokenAction(t));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('GitHub token (optional)'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Only needed if this app's repo is private. Create a "
+            'fine-grained token at github.com/settings/tokens with access to '
+            '${AppUpdates.githubRepo} only and "Contents" set to Read-only. '
+            'It is stored encrypted on this phone.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            obscureText: _obscured,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: widget.hasToken
+                  ? 'New token (replaces the saved one)'
+                  : 'Token',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip: _obscured ? 'Show token' : 'Hide token',
+                icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscured = !_obscured),
+              ),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+        ],
+      ),
+      actions: [
+        if (widget.hasToken)
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(const _UpdateTokenAction(null)),
+            child: const Text('Remove'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
+    );
   }
 }

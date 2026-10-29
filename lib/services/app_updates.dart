@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mfficiency_updates/mfficiency_updates.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -30,19 +32,69 @@ enum UpdatesApp {
 /// silent download, install) is entirely the package's [UpdateController]
 /// with its defaults; this file only holds what is BestToDo's own:
 ///
-/// * [config]: repo `Mfficiency/best_todo_2` (public, no token), the tag
+/// * [config]: repo `Mfficiency/best_todo_2` (public), the tag
 ///   prefix `v`, every 15 minutes while open (GitHub's anonymous limit is
 ///   60 requests/hour), the "Automatically update" switch
 ///   ([Config.autoUpdateCheckEnabled]);
-/// * BestToDo's pre-update backup ([PreUpdateBackup.ensure]) as the
-///   package's `beforeInstall`, and [promptAllowed] (false while the intro
-///   or a first-start picker is open) as its `promptAllowed`;
+/// * the optional GitHub token ([readToken]/[saveToken], Settings →
+///   Updates) in secure storage, so updates keep working if the repo turns
+///   private; without one everything works as before (anonymous API);
+/// * the package's [FullBackup] ([backup], `Download/BestToDo/Backups`)
+///   before every update as its `beforeInstall`, and [promptAllowed] (false
+///   while the intro or a first-start picker is open) as its
+///   `promptAllowed`;
 /// * the app's date format ([strings]) and log ([LogService]);
 /// * the update prefs from before the package ([migrateLegacyState]).
 class AppUpdates {
   AppUpdates._();
 
   static const String githubRepo = 'Mfficiency/best_todo_2';
+
+  // ── Optional GitHub token ────────────────────────────────────────────
+
+  /// Secure-storage key of the optional GitHub token (read access to
+  /// [githubRepo]). Never in SharedPreferences, settings.json, the full
+  /// backup or the log.
+  static const String tokenKey = 'updates.github_token';
+
+  /// Where the token lives: Android's Keystore-encrypted storage (the
+  /// platform's secure store elsewhere). `resetOnError`: a value restored
+  /// from Android's cloud backup onto another device can't be decrypted;
+  /// it is dropped instead of failing every read. Tests use
+  /// `FlutterSecureStorage.setMockInitialValues`.
+  static const FlutterSecureStorage secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+      resetOnError: true,
+    ),
+  );
+
+  /// The saved token, or null (none, or secure storage unavailable). The
+  /// package's `tokenProvider`: with a token, checks and downloads go
+  /// through GitHub's API with it (works for a public and a private repo);
+  /// without, anonymously as before.
+  static Future<String?> readToken() async {
+    try {
+      final t = (await secureStorage.read(key: tokenKey))?.trim();
+      return t == null || t.isEmpty ? null : t;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Saves [token] (trimmed), or removes it when null/empty, then has the
+  /// running [controller] read it again (`reloadToken`, which checks at
+  /// once). Errors from secure storage propagate (Settings shows them).
+  static Future<void> saveToken(String? token) async {
+    final t = token?.trim() ?? '';
+    if (t.isEmpty) {
+      await secureStorage.delete(key: tokenKey);
+    } else {
+      await secureStorage.write(key: tokenKey, value: t);
+    }
+    final c = controller;
+    if (c != null) unawaited(c.reloadToken());
+  }
 
   /// How often a running app checks (and how old the last check may be at
   /// start or when it comes back): GitHub's anonymous API allows 60
@@ -52,6 +104,22 @@ class AppUpdates {
   /// The running app's updates; null until [create] ran (tests set it,
   /// pages without one show no update UI).
   static UpdateController? controller;
+
+  /// The running app's full backup (the package's [FullBackup]): every
+  /// file in the app's folders plus its SharedPreferences, in one file in
+  /// `Download/BestToDo/Backups` that stays when the app is uninstalled;
+  /// made before every update and from Settings → Backup & data, restored from
+  /// there too. Null until [createBackup] ran (tests). Android only.
+  static FullBackup? backup;
+
+  /// [backup]'s settings. `pre_update_backup/` ([PreUpdateBackup], the
+  /// once-per-install copy of the data files) is left out as a duplicate.
+  /// Everything else BestToDo keeps is a file in its own folders or a
+  /// SharedPreferences key, so there are no `extras`.
+  static const FullBackupConfig backupConfig = FullBackupConfig(
+    appName: 'BestToDo',
+    excluded: {PreUpdateBackup.backupDirName},
+  );
 
   /// BestToDo: false while the intro, the mode picker or another
   /// first-start chooser is open (`main.dart`), so Android's install
@@ -71,6 +139,10 @@ class AppUpdates {
         build: build,
         channel: channel ?? Config.channel,
         githubRepo: githubRepo,
+        // Public: privateRepo stays false (true without a token would stop
+        // updates). With a token, package 1.6.3+ downloads through the
+        // asset API too, so a repo turned private keeps updating.
+        tokenProvider: readToken,
         tagPrefix: app.tagPrefix,
         autoCheck: () => Config.autoUpdateCheckEnabled,
         checkInterval: interval,
@@ -90,11 +162,29 @@ class AppUpdates {
     LogService.add('update', data.isEmpty ? event : '$event $data');
   }
 
-  /// BestToDo's data files are snapshotted before Android's "Update this
-  /// app?" opens, so whatever the next version does to them, this one's
-  /// copy survives.
-  static Future<void> _backupFirst(UpdateResult update, String apkPath) =>
-      PreUpdateBackup.ensure();
+  /// First thing in `main()`, before anything writes SharedPreferences (so
+  /// [FullBackup.offerRestore] can tell a new install): builds [backup].
+  /// The seams are for tests.
+  static Future<FullBackup> createBackup({
+    SharedPreferences? prefs,
+    UpdatePlatform? platform,
+    Future<Map<String, String>> Function()? roots,
+    Future<String> Function(String name)? scratch,
+  }) async {
+    await Config.ensureVersionLoaded();
+    final b = FullBackup(
+      config: backupConfig,
+      version: Config.version,
+      build: int.tryParse(Config.buildNumber) ?? 0,
+      prefs: prefs ?? await SharedPreferences.getInstance(),
+      platform: platform,
+      roots: roots,
+      scratch: scratch,
+      log: (event, data) => LogService.add('backup', '$event $data'),
+    );
+    await b.init();
+    return backup = b;
+  }
 
   /// The [UpdateController] for [app] with everything app-specific;
   /// [create] uses it, tests build theirs on fakes through it.
@@ -108,6 +198,7 @@ class AppUpdates {
     ApkDownloader? downloader,
     UpdatePlatform? platform,
     DateTime Function()? clock,
+    FullBackup? backup,
   }) =>
       UpdateController(
         config: config(app, version: version, build: build, channel: channel),
@@ -119,12 +210,13 @@ class AppUpdates {
         log: _log,
         clock: clock,
         promptAllowed: promptAllowed,
-        beforeInstall: _backupFirst,
+        // Everything, to Downloads, before Android's "Update this app?".
+        beforeInstall: backup?.beforeUpdate,
       );
 
   /// Before the first frame: builds [controller] for [app] (reads the
-  /// version, migrates the stored state, no network). The seams are for
-  /// tests.
+  /// version, migrates the stored state, no network), with [backup] (from
+  /// [createBackup]) before every install. The seams are for tests.
   static Future<UpdateController> create(
     UpdatesApp app, {
     SharedPreferences? prefs,
@@ -145,8 +237,9 @@ class AppUpdates {
       store: SharedPreferencesUpdateStore(prefs),
       http: http,
       downloader: downloader,
-      platform: platform,
+      platform: platform ?? backup?.platform,
       clock: clock,
+      backup: backup,
     );
     await c.init();
     return controller = c;

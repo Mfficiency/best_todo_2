@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -107,9 +106,4 @@ class PreUpdateBackup {
 
   /// Clears cached state so tests with fresh temp dirs start clean.
   static void resetForTest() => _done = false;
-
-  /// Tests of the update flow: the backup counts as made, so installing
-  /// touches no disk (real I/O hangs inside `testWidgets`).
-  @visibleForTesting
-  static void skipForTest() => _done = true;
 }

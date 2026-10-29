@@ -114,6 +114,16 @@ It writes recent activity to `dev_build_watch.log`.
 For example `bash tool/build.sh web` will create a folder like
 `build/web-0.1.4` containing the compiled app.
 
+## Wear OS companion (BestToDo Watch)
+`wear/` holds a small Wear OS app (Kotlin + Compose for Wear OS, its own Gradle
+build, not part of `android/`): today's and tomorrow's tasks (the Due Tasks
+widget's list), tap twice to complete one, and the alarms, read-only; synced with
+the phone over the Wearable Data Layer. `tool\build.ps1 release` builds it after
+the phone APK (`WEAR=0` skips) into `build\wear\` and, with `PUBLISH=1`,
+publishes it as a separate `wear-v…` GitHub release (never offered to phones).
+Build, wireless-ADB install on the Galaxy Watch6 Classic and tests:
+[wear/README.md](wear/README.md).
+
 ## Publishing
 ### Android
 follow this tutorial to publish the app on the Play Store:

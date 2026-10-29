@@ -4,25 +4,17 @@ import 'dart:io';
 import 'package:besttodo/config.dart';
 import 'package:besttodo/services/app_updates.dart';
 import 'package:besttodo/services/pre_update_backup.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'update_fakes.dart';
 
-class _FakePathProvider extends PathProviderPlatform {
-  _FakePathProvider(this.path);
-  final String path;
-
-  @override
-  Future<String?> getApplicationDocumentsPath() async => path;
-}
-
 /// BestToDo's side of the updates package
 /// (`lib/services/app_updates.dart`): which releases it takes, the
 /// "Automatically update" switch, the state stored before the package, the
-/// pre-update backup before Android's installer opens and the held-back
+/// full backup before Android's installer opens and the held-back
 /// prompt. Everything else is the package's default behaviour (resume
 /// check, the switch turned on/off while running, GitHub's rate limit,
 /// User-Agent, channel order, APK-less releases), tested in the package
@@ -242,6 +234,105 @@ void main() {
     });
   });
 
+  group('optional GitHub token (Settings → Updates)', () {
+    const apiAsset = 'https://api.github.com/repos/Mfficiency/best_todo_2/';
+
+    /// A controller whose GitHub records the headers of every request.
+    UpdateController withHeaders(List<Map<String, String>> sent) {
+      final c = AppUpdates.controllerFor(
+        UpdatesApp.todo,
+        version: '0.2.106',
+        build: 1000,
+        store: MemoryUpdateStore(),
+        http: UpdateHttp.from((url, headers, cacheFor) async {
+          sent.add(headers);
+          return [release('v0.2.107-3600010')];
+        }),
+        downloader: downloader,
+        platform: UpdatePlatform(supported: true),
+      );
+      return AppUpdates.controller = c;
+    }
+
+    test('none saved: the provider gives null, the repo stays public', () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final c = AppUpdates.config(UpdatesApp.todo, version: '1', build: 1);
+      expect(await c.tokenProvider!(), isNull);
+      expect(c.privateRepo, isFalse,
+          reason: 'privateRepo without a token would stop every update');
+    });
+
+    test('saved: the provider gives it (trimmed); removed: null again',
+        () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final c = AppUpdates.config(UpdatesApp.todo, version: '1', build: 1);
+      await AppUpdates.saveToken('  github_pat_abc  ');
+      expect(await c.tokenProvider!(), 'github_pat_abc');
+      expect(await AppUpdates.secureStorage.read(key: AppUpdates.tokenKey),
+          'github_pat_abc',
+          reason: 'kept in secure storage under its key');
+      await AppUpdates.saveToken(null);
+      expect(await c.tokenProvider!(), isNull);
+      await AppUpdates.saveToken('x');
+      await AppUpdates.saveToken('   ');
+      expect(await c.tokenProvider!(), isNull, reason: 'empty = remove');
+    });
+
+    test('never in SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+      await AppUpdates.saveToken('github_pat_secret');
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in prefs.getKeys()) {
+        expect('${prefs.get(k)}', isNot(contains('github_pat_secret')));
+      }
+    });
+
+    test('without a token: anonymous checks, the public download link',
+        () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final sent = <Map<String, String>>[];
+      final c = withHeaders(sent);
+      await c.init();
+      expect(c.hasToken, isFalse);
+      expect(c.configured, isTrue);
+      final r = await c.check();
+      expect(r.status, UpdateStatus.available);
+      expect(sent.single.containsKey('Authorization'), isFalse);
+      expect(r.url, startsWith('https://github.com/'));
+    });
+
+    test('with a token: sent with every check, the APK through the API',
+        () async {
+      FlutterSecureStorage.setMockInitialValues(
+          {AppUpdates.tokenKey: 'github_pat_abc'});
+      final sent = <Map<String, String>>[];
+      final c = withHeaders(sent);
+      await c.init();
+      expect(c.hasToken, isTrue);
+      final r = await c.check();
+      expect(sent.single['Authorization'], 'Bearer github_pat_abc');
+      expect(r.url, startsWith(apiAsset),
+          reason: 'still works once the repo is private (package 1.6.3)');
+    });
+
+    test('saveToken has the running controller read it again', () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final sent = <Map<String, String>>[];
+      final c = withHeaders(sent);
+      await c.init();
+      expect(c.hasToken, isFalse);
+      await AppUpdates.saveToken('github_pat_new');
+      await settle();
+      expect(c.hasToken, isTrue);
+      expect(sent.last['Authorization'], 'Bearer github_pat_new');
+      await AppUpdates.saveToken(null);
+      await settle();
+      expect(c.hasToken, isFalse);
+      expect(sent.last.containsKey('Authorization'), isFalse);
+    });
+  });
+
   test('create() builds the running app from its version and prefs',
       () async {
     PackageInfo.setMockInitialValues(
@@ -265,28 +356,56 @@ void main() {
     Config.resetVersionForTest();
   });
 
-  test("BestToDo's data files are snapshotted before Android's installer opens",
-      () async {
-    final dir = await Directory.systemTemp.createTemp('pre_update');
+  test(
+      'everything is backed up to Download/BestToDo/Backups before '
+      "Android's installer opens", () async {
+    final dir = await Directory.systemTemp.createTemp('full_backup');
     addTearDown(() => dir.delete(recursive: true));
-    PathProviderPlatform.instance = _FakePathProvider(dir.path);
-    PreUpdateBackup.resetForTest();
-    await File('${dir.path}/tasks.json').writeAsString('[{"title":"keep"}]');
+    final docs = Directory('${dir.path}/docs')..createSync();
+    File('${docs.path}/tasks.json').writeAsStringSync('[{"title":"keep"}]');
+    File('${docs.path}/attachments/a1/photo.jpg')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('jpeg bytes');
+    File('${docs.path}/${PreUpdateBackup.backupDirName}/tasks.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('old copy');
+    SharedPreferences.setMockInitialValues({'intro_shown': true});
+    var scratches = 0;
+    final backup = await AppUpdates.createBackup(
+      prefs: await SharedPreferences.getInstance(),
+      platform: UpdatePlatform(supported: true),
+      roots: () async => {'documents': docs.path},
+      scratch: (name) async =>
+          (Directory('${dir.path}/scratch${scratches++}')..createSync()).path,
+    );
+    addTearDown(() => AppUpdates.backup = null);
+    expect(AppUpdates.backup, same(backup));
+    expect(backup.folder, 'Download/BestToDo/Backups');
+    expect(backup.looksFresh, isFalse);
 
     github.releases = [release('v0.2.107-2000')];
     final c = fakeController(
-        github: github, downloader: downloader, build: 1, backup: true);
+        github: github, downloader: downloader, build: 1, backup: backup);
     await c.init();
     await c.check();
     await settle();
-    for (var i = 0; i < 50 && installer.installs.isEmpty; i++) {
+    for (var i = 0; i < 100 && installer.installs.isEmpty; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
     expect(installer.installs, ['/cache/updates/BestToDo-0.2.107-2000.apk']);
-    final backup =
-        File('${dir.path}/${PreUpdateBackup.backupDirName}/tasks.json');
-    expect(await backup.readAsString(), '[{"title":"keep"}]');
-    PreUpdateBackup.resetForTest();
+    // The backup was handed to Downloads before the installer was called.
+    final methods = installer.calls.map((c) => c.method).toList();
+    expect(methods.indexOf('saveToDownloads'),
+        lessThan(methods.indexOf('installApk')));
+    expect(installer.downloads.keys.single,
+        startsWith('Download/BestToDo/Backups/BestToDo-'));
+    final tar = utf8.decode(gzip.decode(installer.downloads.values.single),
+        allowMalformed: true);
+    expect(tar, contains('[{"title":"keep"}]'));
+    expect(tar, contains('jpeg bytes'));
+    expect(tar, contains('intro_shown'));
+    expect(tar, isNot(contains('old copy')));
+    expect(backup.last.value?.reason, 'before-update');
   });
 
   test("Android's dialog waits while BestToDo's intro is open", () async {

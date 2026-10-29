@@ -1,5 +1,16 @@
 # CLAUDE.md — AI working guide for BestToDo
 
+## Every request ends on `dev` (standing rule from the owner)
+
+Any request that changes files is finished only when the work is **merged into
+`dev` and pushed**, without being asked: commit on the working branch, merge
+`origin/dev` into it (resolve conflicts, keep both sides' intent), run the repo's
+checks, then merge the branch into `dev` and `git push origin dev`. Report the
+`dev` commit. `staging`/`main` only when the request says so. If the merge or
+push can't be done, say exactly why. `.claude/hooks/require-merged-to-dev.sh` (a Stop
+hook in `.claude/settings.json`) blocks stopping while commits or tracked changes
+are not on `dev`.
+
 Flutter to-do app (Android-first, Windows desktop used for tests/screenshots).
 Best Music, once a second app built from this repo, lives in its own repo
 since 0.2.111: `Mfficiency/BestMusic` (`D:\Code\BestMusic`).
@@ -91,12 +102,19 @@ file is the short operational guide.
   The behaviour is the package's defaults (same in every Mfficiency app); don't work around
   it in the app. `lib/services/app_updates.dart` (`AppUpdates`) only passes app-specific
   config: one `UpdateController` (`AppUpdates.controllerFor`) made in `main()`
-  (`UpdatesApp.todo`, tag prefix `v`; public repo `Mfficiency/best_todo_2`, no token; checks
+  (`UpdatesApp.todo`, tag prefix `v`; public repo `Mfficiency/best_todo_2`, `privateRepo` false;
+  optional read-only token from Settings → Updates in `flutter_secure_storage` via
+  `AppUpdates.readToken`/`saveToken` = `tokenProvider` + `reloadToken()`, so a repo turned
+  private keeps updating; checks
   every 15 minutes, also on resume when due; the "Automatically update" switch =
   `UpdateConfig.autoCheck`, Settings calls the controller's `autoCheckChanged()`; `music-v…`
   releases here are Best Music's bridge releases, never offered), started after the first
   frame; `promptAllowed` (`AppUpdates.promptAllowed`, false while the
-  intro/pickers are open) and `beforeInstall` = `PreUpdateBackup.ensure()`; the old update
+  intro/pickers are open) and `beforeInstall` = the package's `FullBackup.beforeUpdate`
+  (`AppUpdates.backup`, made first thing in `main()` by `AppUpdates.createBackup`: every
+  file in the app's folders + SharedPreferences to `Download/BestToDo/Backups/*.tar.gz`,
+  kept across uninstalls, `pre_update_backup/` excluded; Settings → Backup shows
+  `FullBackupTiles`, a new install gets `offerRestore` after the first frame); the old update
   prefs through the package's `migrateLegacyUpdateState`. GitHub's rate limit pauses the
   automatic checks (package). Releases without an APK are never offered. Behaviour: **every** download is silent (into the app cache; one SnackBar for a
   tap, progress only as passive text on the Changelog's `UpdateStatusCard` and the Check for
@@ -108,7 +126,7 @@ file is the short operational guide.
   (older = rollback). `MainActivity`/the manifest have no update code (the plugin brings
   `REQUEST_INSTALL_PACKAGES`, its receiver and channel; registered by Flutter). Tests fake
   it with `test/update/update_fakes.dart` (`fakeController` = `controllerFor` on fakes; the
-  real pre-update backup only with `backup: true`).
+  full backup only when a `FullBackup` is passed as `backup:`).
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`
@@ -117,6 +135,20 @@ file is the short operational guide.
   `dart run tool/sync_test_report.dart --no-fetch --candidate-machine build/ci/machine.jsonl`
 - Version bump: `dart run tool/bump_version.dart <version> "<changelog entry>"`
   or edit `pubspec.yaml` (`x.y.z+build`, both parts increment) + prepend `CHANGELOG.md`.
+- Wear OS companion (`wear/`, own Gradle build, never part of `android/`): see
+  `wear/README.md` (sync paths `/todo/today`, `/todo/alarms`, `/todo/command/complete`;
+  phone side `lib/services/wear_sync_service.dart`, `WearSync.kt`, `WearCommandService.kt`;
+  watch commands are queued natively and applied by the home page, never written to
+  tasks.json from Kotlin). `build.ps1 release` builds it after the phone (`WEAR=0` skips) and
+  publishes `wear-v…` releases. Pure watch logic: `./gradlew -p wear test`.
+- Approvals website (SPEC §4.2k): Waiting for Approval only, password-locked, at
+  `https://mfficiency.github.io/best_todo_2/`. `deploy-web.yml` builds it on every push to
+  `dev` (`flutter build web --dart-define=WEB_APPROVALS_SITE=true` +
+  `dart run tool/harden_approvals_site.dart`) and force-pushes it to `gh-pages`. The
+  Todoist token lives only in the browser, AES-GCM-encrypted with the person's password.
+  Code: `lib/ui/web_approvals_site.dart`, `lib/services/web_approvals/`. Never put a
+  secret in the build. Keep `ApprovalsSyncCoordinator` between the page and the sync,
+  or a stale save makes the next sync delete tasks on Todoist.
 - Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
   build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 
@@ -183,17 +215,22 @@ file is the short operational guide.
 - Don't introduce new deprecation warnings; existing `withOpacity`/
   `onWillAccept` infos are legacy and get cleaned opportunistically.
 - Changelog entries are user-facing bullet points under `## [x.y.z] - date`.
-- **Standing rule — MLR tag is Worklist-exclusive**: any task tagged/labeled
-  `mlr` shows *only* inside the Worklist tool, never in the regular home
-  tabs, schedule view, Wishlist, Projects/board, or the Markdown export —
-  the user has asked for this once and it does not need to be requested
-  again. Enforced structurally in `ItemViews.isVisibleInMainViews`
-  (`lib/services/item_views.dart`), the same gate Food Diary/Research use,
-  via `worklistToken`/`hasWorklistToken` in `lib/utils/label_utils.dart`.
-  When touching task-visibility filtering (home tabs, schedule view,
-  wishlist, projects, the home-screen widget), preserve this gate rather
+- **Standing rule — MLR (and Lemmon) items stay out of the main views**:
+  any task tagged/labeled `mlr` shows inside the Worklist tool and, only when
+  the drawer's Home row has its **MLR** toggle switched on (default off), in
+  the regular home tabs and schedule view — never in the Wishlist,
+  Projects/board, the home-screen widget, Wear or the Markdown export. The
+  `lemmon` tag works the same way (Tools ▸ Lemmon, **Lemmon** toggle). The
+  owner asked for the MLR rule once and for the toggles in 0.2.123; neither
+  needs to be requested again. Enforced structurally in
+  `ItemViews.isVisibleInMainViews` (`lib/services/item_views.dart`), the same
+  gate Food Diary/Research/Groceries use, via `worklistToken`/`lemmonToken`
+  in `lib/utils/label_utils.dart`; the toggles (`HomeContexts`,
+  `Config.homeContexts`) are a parameter of `ItemViews.isOnHomeScreen`, not a
+  second filter. When touching task-visibility filtering (home tabs, schedule
+  view, wishlist, projects, the home-screen widget), preserve this gate rather
   than reintroducing a path that reads `_tasks`/the task list unfiltered.
   Both home bodies must go through `ItemViews.isOnHomeScreen` — the tabs via
   `homeBucket`, the schedule view via `homeVisible` — so the Home filter
-  rules and the demo gate can never apply to one and not the other (that
-  leak was 0.2.46's bug).
+  rules, the context toggles and the demo gate can never apply to one and not
+  the other (that leak was 0.2.46's bug).

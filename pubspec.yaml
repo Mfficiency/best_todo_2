@@ -2,7 +2,7 @@ name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.2.114+422
+version: 0.2.134+442
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -17,6 +17,8 @@ dependencies:
   home_widget: ^0.8.0
   device_info_plus: ^9.0.2
   shared_preferences: ^2.2.2
+  # The updater's optional GitHub token (Settings → Updates), never in prefs.
+  flutter_secure_storage: ^9.2.4
   file_selector: ^1.0.0
   url_launcher: ^6.2.5
   uuid: ^3.0.7

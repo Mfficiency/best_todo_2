@@ -1,5 +1,66 @@
 # Changelog
 
+## [0.2.134] - 2026-10-29
+- Backlog items on Home behave like normal tasks again: they sit in the tab of their due date, and swiping one to Tomorrow or the Day after just moves its date. Only when you move one to Next week does it also become Next, and to Next month or Future, Someday.
+
+## [0.2.133] - 2026-10-28
+- With Backlog on in the drawer's Home filters, backlog items sit in the home tabs by state — Active in Today, Next in Next week, Someday in Future — and moving or swiping one changes its state instead of its due date.
+
+## [0.2.132] - 2026-10-28
+- Approvals website: Backlog items now show up there too, so the website lists the same items as the app and Todoist instead of nearly nothing. Approving one there puts it in your Wishlist as usual; to get its Obsidian page, tap **Create Obsidian page** on the item in the app's Wishlist. Groceries and Research items still have to be approved in the app (the footer says how many are waiting there).
+
+## [0.2.131] - 2026-10-28
+- Home filters: next to Todo, MLR and Lemmon there is now a **Backlog** switch (drawer → arrow next to Home). Turn it on to see your Backlog (wishlist) items in the home list too; it's off by default, so nothing changes until you switch it on.
+
+## [0.2.130] - 2026-10-28
+- Waiting for Approval syncs with Todoist by itself now: opening it pulls the latest (a thin bar shows while it does), and you can pull down to sync again. What you approved or denied on the approvals website or in Todoist shows up right away instead of only after leaving the app. Items that were approved on the website before your phone had this update are fixed on the next sync, and ones denied there go to the Deleted bin instead of staying stuck.
+
+## [0.2.129] - 2026-10-28
+- Waiting for Approval: every category and every date/conversation header now has its own approve (green ✓, left) and deny (red ✗, right) button, so a whole group is handled in one click — in the app and on the approvals website. Approving applies each item's suggestion; denying shows the usual Undo for a few seconds.
+
+## [0.2.128] - 2026-10-28
+- Waiting for Approval: inside each category (Todo, Migros, ...) the items are now also grouped by date and conversation, with a small header like "2026-10-28  Walk 21 Oct (2)" — in the app and on the approvals website. Long-press one of those headers to select just its items.
+
+## [0.2.127] - 2026-10-28
+- Approvals website: two wrong passwords in a row now delete the saved token from that browser right away and block it for 3 months, without saying so — the lock screen keeps answering "Wrong password", even to the right one, and the site can't be set up again there. If that happens to you after a typo, clear the site's data in that browser (site settings → clear data) and set it up again with your Todoist token.
+
+## [0.2.126] - 2026-10-28
+- Approvals website: approve or deny your Waiting for Approval items from any computer's browser, no install. Open https://mfficiency.github.io/best_todo_2/, paste your Todoist API token once and choose a password (12+ characters). The token stays only in that browser, encrypted with your password; after that the site just asks for the password. It locks itself after 15 minutes without use (or with Lock in the menu) and a wrong password locks it down (see 0.2.127). Todo, Migros, Lemmon and Other items can be approved there; Backlog, Research, Groceries and Food stay for the app. Approvals and denials made on the website show up in the app at its next Todoist sync (a denied item goes to the Deleted bin).
+
+## [0.2.125] - 2026-10-27
+- Waiting for Approval: tap an item to edit it before approving — title, description, note, tags and attachments, the same fields as a task on the home list. Edits are kept while it waits, and it lands in its final list with them.
+
+## [0.2.124] - 2026-10-27
+- Voice inbox, part 2: approving a Backlog item now asks Claude to write its Obsidian page (or tap Create Obsidian page on an expanded wish), and the item gets an Open in Obsidian button once it's there. Moving a Research item to Active starts a research round: Claude asks a few questions, you answer them in the app (Answer questions, with the mic), and it writes the full research page into Obsidian. Set it up under Settings → Claude Routine → Voice inbox routine (needs Todoist sync on).
+
+## [0.2.123] - 2026-10-27
+- Voice inbox: Waiting for Approval now sorts items into Todo, Migros, Lemmon, Backlog, Research, Groceries and Other (pick another view under Group by). Each group swipes to its own destinations: a day for Todo/Migros/Lemmon, Active / Next / Someday for Backlog and Research, Add to list for Groceries; swiping an Other item asks where it belongs. Claude's suggested destination shows as → Tomorrow and is what the countdown picks. Long-press an item and drag it onto another group to fix its category; multi-select is now the Select button at the top. Food from a voice note goes straight into the Food Diary, with a blue dot when it needs a check (editing the entry clears it). Items Claude linked to an Obsidian page get an Open in Obsidian button.
+- Home: the menu's Home row has an arrow that folds out Todo, MLR and Lemmon switches, so the home list can show regular items, MLR items, Lemmon items or any mix. It starts as before (regular items only) and remembers your choice.
+- New tools: Lemmon (like Worklist, for items tagged lemmon) and Groceries, a reusable shopping checklist grouped by category (fruit & vegetables, dairy, pasta & rice, ...) with Check all and Reset list at the top. Categories can be renamed, reordered and added under Edit categories; something already on the list is unchecked instead of added twice, and an item lands in the category it had last time.
+- Wishlist sections are now called Active (was Next release), Next (was Soon), Someday (was Backlog) and Done (was Newly implemented). Research is grouped the same way, with a Move to button on each item; research items no longer show their due date.
+
+## [0.2.122] - 2026-10-25
+- Watch: BestToDo Watch's app icon is now the BestToDo logo (black on a white circle), so it is easy to spot in the watch's app list instead of a plain blue check mark
+- Notifications show the BestToDo logo in the status bar and on the watch instead of a blank square
+
+## [0.2.121] - 2026-10-25
+- Settings → Updates has a new "GitHub token (optional)" row. Only needed if BestToDo's GitHub repo is ever made private: paste a read-only token there and the app keeps updating itself. Without a token updates work exactly as before. The token is stored encrypted on this phone, is never shown again, and can be replaced or removed from the same row. The update module is version 1.6.3.
+
+## [0.2.120] - 2026-10-25
+- BestToDo Watch updates itself: once a day while the watch charges (and when you tap Check for updates at the bottom of its list) it installs the newest watch build from GitHub without asking. Set it up once per watch with adb when you first install it (one command, see wear/README.md › Updates); after that, no more adb installs for the watch.
+
+## [0.2.118] - 2026-10-24
+- Settings: same layout as the other apps — Appearance first, Updates and Backup & data at the bottom, less space between sections. "Backup" is now called "Backup & data".
+
+## [0.2.117] - 2026-10-23
+- New: a full backup of everything BestToDo keeps (tasks, alarms, projects, labels, wishlist, deleted items, history, attachments, settings and preferences) is saved to Download/BestToDo/Backups before every update. That folder stays when the app is uninstalled, so after a reinstall BestToDo offers to restore it. Settings → Backup has "Back up everything" and "Restore from a backup" (restore backs up the current data first, then restarts the app). Android only. The update module is version 1.6.0.
+
+## [0.2.116] - 2026-10-20
+- New: BestToDo Watch, a companion app for Wear OS watches (made for the Galaxy Watch6 Classic). It shows today's tasks (the same list as the Due Tasks widget, so Worklist, Food Diary and not-yet-approved items stay off it), tomorrow's tasks and your alarms. Tap a task twice on the watch to complete it; the phone completes it like a tap in the app (also when BestToDo is closed). The watch says whether the phone is connected and keeps the last lists when it isn't. It is published as its own download (wear-v… releases) and installed with wireless ADB, see wear/README.md.
+
+## [0.2.115] - 2026-10-17
+- PC Watcher: the page now opens with the PC card, then Pending, then the build log. The log hides runs that built nothing because the code was already published (pick "Already published" or "All" to see them), and its filters are folded away behind a Filters button. The 7-day stats moved to their own page — tap Stats at the bottom.
+
 ## [0.2.114] - 2026-10-15
 - Changelog: every version now shows when it was built, how long the build took and the size of its APK (taken from its GitHub release; versions without that keep the build lines the changelog already had). The update module is version 1.5.0.
 

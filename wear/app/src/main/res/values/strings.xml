@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BestToDo</string>
+    <string name="status_connecting">Looking for your phone…</string>
+    <string name="status_connected">Phone connected</string>
+    <string name="status_unreachable">Phone not reachable</string>
+    <string name="status_unreachable_saved">Phone not reachable · saved %1$s</string>
+    <string name="status_saved">Saved %1$s</string>
+    <string name="status_no_app">Update BestToDo on your phone</string>
+    <string name="header_today">Today</string>
+    <string name="header_today_stale">Today (saved %1$s)</string>
+    <string name="header_tomorrow">Tomorrow</string>
+    <string name="header_alarms">Alarms</string>
+    <string name="no_data">Open BestToDo on your phone once</string>
+    <string name="nothing_today">Nothing left for today</string>
+    <string name="nothing_tomorrow">Nothing for tomorrow</string>
+    <string name="no_alarms">No alarms</string>
+    <string name="more_on_phone">+%1$d more on the phone</string>
+    <string name="tap_again">Tap again: done</string>
+    <string name="waiting_for_phone">Done · waiting for phone</string>
+    <string name="sent_to_phone">Done · sent</string>
+    <string name="alarms_chip">Alarms</string>
+    <string name="alarm_next">Next: %1$s</string>
+    <string name="alarm_off">Off</string>
+    <string name="refresh">Refresh</string>
+    <string name="word_today">Today</string>
+    <string name="word_tomorrow">Tomorrow</string>
+    <string name="error_send">Couldn\'t reach the phone; will retry</string>
+    <string name="error_read">Couldn\'t read the phone\'s data</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_install">Install update</string>
+    <string name="update_running">Watch app %1$s</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_downloading">Downloading %1$s…</string>
+    <string name="update_installing">Installing %1$s…</string>
+    <string name="update_confirm">%1$s is ready: tap Install update</string>
+    <string name="update_no_permission">%1$s is out: allow installs once with adb</string>
+    <string name="update_failed">Update check failed, tries again later</string>
+    <string name="update_up_to_date">Watch app %1$s · up to date (%2$s)</string>
+</resources>

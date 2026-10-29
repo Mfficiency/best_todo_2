@@ -18,6 +18,8 @@ When you change something, update its canonical doc — never fork a second copy
 | `CLAUDE.md` (repo root) | The short operational quickstart: commands, conventions, workflow. First thing a session reads. |
 | `test/README.md` | The test-suite map: what each silo covers, which suites to run for which change. |
 | `.github/workflows/*.yml` + `tool/*` | The automation itself — the scripts are commented and are their own reference. |
+| `docs/VOICE_INBOX_HANDOVER.md` | The owner's setup checklist for the voice inbox (routine, vault Action, app settings, end-to-end test, troubleshooting). |
+| `docs/proposals/` | Agreed designs not built yet (e.g. `voice-inbox.md`: Pocket → Claude → grouped approval). When a phase ships, its as-built description moves into `SPEC.md`. |
 | `docs/architecture/` | Architecture Decision Records (e.g. `storage-decision.md`: why JSON files, what would trigger SQLite). |
 | `.claude/notes/` (this folder) | The operational deep dives listed below. |
 
