@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.115] - 2026-10-29
+- New tool: Bulk Add (Tools → Bulk Add). Type or paste a list, one item per line, pick the tags, project and tab they should all get, and add them in one go. List markers like "- " or "1. " are removed from pasted lines, and the tags, project and tab stay selected for the next batch.
+
 ## [0.2.114] - 2026-10-15
 - Changelog: every version now shows when it was built, how long the build took and the size of its APK (taken from its GitHub release; versions without that keep the build lines the changelog already had). The update module is version 1.5.0.
 

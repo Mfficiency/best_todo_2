@@ -164,6 +164,7 @@ class Config {
     'f1_reminder',
     'compass',
     'pc_watcher',
+    'bulk_add',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -185,6 +186,7 @@ class Config {
     'F1 Reminder',
     'Compass',
     'PC Watcher',
+    'Bulk Add',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -235,6 +237,7 @@ class Config {
     'f1_reminder',
     'compass',
     'pc_watcher',
+    'bulk_add',
   ];
 
   /// Human-readable labels for [featureKeys], index-aligned.
@@ -264,6 +267,7 @@ class Config {
     'F1 Reminder',
     'Compass',
     'PC Watcher',
+    'Bulk Add',
   ];
 
   /// One-line explanations for [featureKeys], index-aligned.
@@ -293,6 +297,7 @@ class Config {
     'Texts a phone number 4 hours before every F1 race',
     'Simple compass with a Hold button to freeze the reading',
     'What the build PC built: log, failures, build times, APK sizes, pending',
+    'Add many items at once, all with the same tags, project and tab',
   ];
 
   /// Per-feature switches used in full mode. Missing keys count as enabled.

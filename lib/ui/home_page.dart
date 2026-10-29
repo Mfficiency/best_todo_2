@@ -45,6 +45,7 @@ import 'about_page.dart';
 import 'alarms_page.dart';
 import 'app_logs_page.dart';
 import 'archived_items_page.dart';
+import 'bulk_add_page.dart';
 import 'calendar_view_page.dart' show ScheduleView, ScheduleViewState;
 import 'changelog_page.dart';
 import 'chronize_page.dart';
@@ -1230,6 +1231,8 @@ class _HomePageState extends State<HomePage>
         return const CompassPage();
       case 'pc_watcher':
         return const PcWatcherPage();
+      case 'bulk_add':
+        return BulkAddPage(onAdd: _addBulkTasks);
     }
     return null;
   }
@@ -1907,6 +1910,57 @@ class _HomePageState extends State<HomePage>
     _saveTasks(source: TaskChangeSource.share);
     LogService.add(
         'HomePage._addSharedTask', 'Added shared task: ${task.title}');
+  }
+
+  /// Adds a Bulk Add batch: one task per title, all sharing the batch's tags,
+  /// project and tab (due date), in the order typed — appended after the
+  /// tab's open tasks, or above them when new tasks go to the top. Auto-tag
+  /// rules still add their own tags per title. Saved once for the batch.
+  int _addBulkTasks(BulkAddRequest request) {
+    final titles = request.titles
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if (titles.isEmpty) return 0;
+    final dueDate = _dueDateForTab(request.tabIndex);
+    final rankingTabIndex = _tabIndexForDueDate(dueDate);
+    final addToTop = Config.addNewTasksToTop;
+    final first = _listRankingForNewTask(rankingTabIndex, addToTop: addToTop);
+    // Top: the batch takes the rankings just above the current first task,
+    // still in typed order; bottom: the ones right after the last.
+    final start = addToTop ? first - titles.length + 1 : first;
+    // Same tagging as the add row: auto-tag rules per title, plus the
+    // filtered instance's own tag (Worklist).
+    String labelFor(String title) {
+      final label = AutoTagService.instance.withAutoTags(title, request.label);
+      final filter = widget.tagFilter;
+      return filter == null ? label : addLabelToken(label, filter);
+    }
+
+    final now = DateTime.now();
+    final tasks = <Task>[
+      for (var i = 0; i < titles.length; i++)
+        Task(
+          title: titles[i],
+          label: labelFor(titles[i]),
+          createdAt: now,
+          origin: TaskChangeSource.user,
+          dueDate: dueDate,
+          projectId: request.projectId,
+          listRanking: start + i,
+        ),
+    ];
+    setState(() => _tasks.addAll(tasks));
+    for (final task in tasks) {
+      _trackTaskCreated(task);
+    }
+    _saveTasks();
+    for (final task in tasks) {
+      _applySmartTagInBackground(task);
+    }
+    LogService.add('HomePage._addBulkTasks',
+        'Bulk-added ${tasks.length} task(s) to tab ${request.tabIndex}');
+    return tasks.length;
   }
 
   /// Creates a task from the Chronize timeline at an explicit deadline
@@ -3163,6 +3217,7 @@ class _HomePageState extends State<HomePage>
     _ToolEntry('f1_reminder', 'F1 Reminder', Icons.sports_score),
     _ToolEntry('compass', 'Compass', Icons.explore),
     _ToolEntry('pc_watcher', 'PC Watcher', Icons.computer),
+    _ToolEntry('bulk_add', 'Bulk Add', Icons.playlist_add),
   ];
 
   /// An icon overlaid with a small red dot, used on the Test Results entry —

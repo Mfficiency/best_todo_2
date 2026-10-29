@@ -3156,6 +3156,24 @@ Tools → **PC Watcher** (feature/start-tool key `pc_watcher`, `Icons.computer`;
   re-downloads; the key action edits/removes the token (`_TokenDialog` owns its controller).
 - Tests: `test/tools/pc_watcher_page_test.dart` (MockClient + mocked SharedPreferences).
 
+### 10.6s Bulk Add (0.2.115)
+Tools → **Bulk Add** (feature/start-tool key `bulk_add`, `Icons.playlist_add`;
+`lib/ui/bulk_add_page.dart`): add many items at once that share tags, project and tab.
+- **Page:** a multi-line **Items** field (one item per line; `parseBulkTitles` drops blank
+  lines and strips leading list markers `- `/`* `/`• `/`+ `/`1. `/`2) ` and checkboxes
+  `[ ]`/`[x]`, so a list pasted from a note works as is), a `LabelPickerField` ("Tags for
+  every item"), a **Project** dropdown (No project + `ProjectService` projects) and an
+  **Add to** dropdown (the `Config.tabs` buckets). The button reads "Add N items" (disabled
+  at 0). After an add a SnackBar says "Added N items" and only the Items field clears —
+  tags, project and tab stay for the next batch.
+- **Adding:** the page hands a `BulkAddRequest` (titles, label, projectId, tabIndex) to
+  `HomePage._addBulkTasks`, which builds one `Task` per title (origin `user`, due date of
+  the chosen tab, `projectId`, label = the shared tags + auto-tag rules per title, + the
+  filtered instance's tag in Worklist), ranks them in typed order after the tab's open
+  tasks (or just above them with "add new tasks to top"), adds them in one `setState`, saves
+  once, then runs the smart auto-tag fallback per task.
+- Tests: `test/tools/bulk_add_page_test.dart` (registration, title parsing, the page's request).
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line
