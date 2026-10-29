@@ -1444,34 +1444,18 @@ class _HomePageState extends State<HomePage>
   /// Map a task to the tab index that would own it in list mode. Used by
   /// the schedule view so each tile's "move to" menu hides the task's
   /// current bucket.
-  int _tabIndexForTask(Task task) =>
-      ItemViews.backlogTabIndex(task, _homeContextsFor()) ??
-      _tabIndexForDueDate(task.dueDate);
+  int _tabIndexForTask(Task task) => _tabIndexForDueDate(task.dueDate);
 
-  /// The date the schedule view groups [task] under: its due date, or for a
-  /// Backlog item placed by state, the first day of that state's tab.
-  DateTime? _scheduleDateOf(Task task) {
-    final tab = ItemViews.backlogTabIndex(task, _homeContextsFor());
-    return tab == null ? task.dueDate : _dueDateForTab(tab);
-  }
-
-  /// Moving a Backlog item that the home list places by state
-  /// ([ItemViews.backlogTabIndex]) changes its state, not its due date, so
-  /// it lands in [destination] (or the tab that state shows in). False for
-  /// every other task, which the caller moves by date.
-  bool _moveBacklogItemToTab(Task task, int destination) {
-    if (ItemViews.backlogTabIndex(task, _homeContextsFor()) == null) {
-      return false;
-    }
-    final state = ItemViews.backlogStateForTab(destination);
-    setState(() {
-      setBacklogState(task, state);
-      task.movedAt = DateTime.now();
-    });
-    _saveTasks();
-    LogService.add('HomePage._moveBacklogItemToTab',
-        'Moved backlog item "${task.title}" to ${BacklogStates.title(state)}');
-    return true;
+  /// A Backlog item (wish) moves by date like any task; one moved to Next
+  /// Week or further also changes state
+  /// ([ItemViews.syncBacklogStateToDueDate]). Call inside setState after the
+  /// new due date is set.
+  void _syncBacklogStateToDueDate(Task task) {
+    final state =
+        ItemViews.syncBacklogStateToDueDate(task, _dateOnly(_currentDate));
+    if (state == null) return;
+    LogService.add('HomePage._syncBacklogStateToDueDate',
+        'Backlog item "${task.title}" is now ${BacklogStates.title(state)}');
   }
 
   /// Reorder within one day section of the schedule view. Other tasks in
@@ -2181,7 +2165,6 @@ class _HomePageState extends State<HomePage>
     }
     if (index >= tasks.length) return;
     final task = tasks[index];
-    if (_moveBacklogItemToTab(task, destination)) return;
     // Keep the occurrence in its series (as an override, so its slot stays
     // reserved and a later refresh neither duplicates nor discards it)
     // rather than detaching it outright.
@@ -2192,6 +2175,7 @@ class _HomePageState extends State<HomePage>
     final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
+      _syncBacklogStateToDueDate(task);
       final now = DateTime.now();
       task.movedAt = now;
       task.rescheduledAt = now;
@@ -2210,7 +2194,6 @@ class _HomePageState extends State<HomePage>
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
     final task = tasks[index];
-    if (_moveBacklogItemToTab(task, destination)) return;
     if (task.recurrenceParentUid != null) {
       task.recurrenceOverride = true;
     }
@@ -2218,6 +2201,7 @@ class _HomePageState extends State<HomePage>
     final newDueDate = _dueDateForTab(destination);
     setState(() {
       task.dueDate = newDueDate;
+      _syncBacklogStateToDueDate(task);
       final now = DateTime.now();
       task.movedAt = now;
       task.rescheduledAt = now;
@@ -2244,14 +2228,14 @@ class _HomePageState extends State<HomePage>
     final tasks = _tasksForTab(pageIndex);
     if (index >= tasks.length) return;
     final task = tasks[index];
-    final newDueDate = _nextWeekdayDate(weekday);
-    if (_moveBacklogItemToTab(task, _tabIndexForDueDate(newDueDate))) return;
     if (task.recurrenceParentUid != null) {
       task.recurrenceOverride = true;
     }
     final oldDueDate = task.dueDate;
+    final newDueDate = _nextWeekdayDate(weekday);
     setState(() {
       task.dueDate = newDueDate;
+      _syncBacklogStateToDueDate(task);
       final now = DateTime.now();
       task.movedAt = now;
       task.rescheduledAt = now;
@@ -2490,7 +2474,6 @@ class _HomePageState extends State<HomePage>
 
   /// The dice timer rang and the user postponed the task to tomorrow.
   void _postponeTaskFromDice(Task task) {
-    if (_moveBacklogItemToTab(task, 1)) return;
     if (task.recurrenceParentUid != null) {
       task.recurrenceOverride = true;
     }
@@ -2498,6 +2481,7 @@ class _HomePageState extends State<HomePage>
     final newDueDate = _dueDateForTab(1);
     setState(() {
       task.dueDate = newDueDate;
+      _syncBacklogStateToDueDate(task);
       final now = DateTime.now();
       task.movedAt = now;
       task.rescheduledAt = now;
@@ -3010,13 +2994,11 @@ class _HomePageState extends State<HomePage>
   /// for a tag-filtered tool instance (Worklist, Lemmon), which already
   /// narrows to its own tag. The full-tab ([applySearch] false) callers that
   /// renumber [Task.listRanking] see every context, so a narrowed list never
-  /// drives that renumbering on its own — the same rule as search. They keep
-  /// the Backlog toggle's setting, though: it decides which tab a wish is in
-  /// ([ItemViews.backlogTabIndex]), and both lists must agree on that.
+  /// drives that renumbering on its own — the same rule as search.
   HomeContexts? _homeContextsFor({bool applySearch = true}) {
     if (widget.tagFilter != null) return null;
     if (!applySearch) {
-      return HomeContexts.all.copyWith(backlog: Config.homeContexts.backlog);
+      return HomeContexts.all;
     }
     return Config.homeContexts;
   }
@@ -3189,6 +3171,7 @@ class _HomePageState extends State<HomePage>
           } else {
             task.dueDate = newDueDate;
           }
+          _syncBacklogStateToDueDate(task);
           task.movedAt = now;
           task.rescheduledAt = now;
           _trackTaskMove(task, oldDueDate, newDueDate);
@@ -3297,7 +3280,6 @@ class _HomePageState extends State<HomePage>
         return _buildTaskTile(task, pageIndex, indexInTab);
       },
       onReorderSection: _reorderTaskInSection,
-      dateOf: _scheduleDateOf,
     );
   }
 

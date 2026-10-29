@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.134] - 2026-10-29
+- Backlog items on Home behave like normal tasks again: they sit in the tab of their due date, and swiping one to Tomorrow or the Day after just moves its date. Only when you move one to Next week does it also become Next, and to Next month or Future, Someday.
+
 ## [0.2.133] - 2026-10-28
 - With Backlog on in the drawer's Home filters, backlog items sit in the home tabs by state — Active in Today, Next in Next week, Someday in Future — and moving or swiping one changes its state instead of its due date.
 

@@ -88,30 +88,31 @@ class ItemViews {
     }
   }
 
-  /// The home tab a wish sits in while the Backlog toggle is on: placed by
-  /// its backlog state ([backlogStateOf]) rather than its due date — Active
-  /// → Today, Next → Next Week, Someday → Future — so Todo and Backlog items
-  /// read as one plan. Null for every other task (and with the toggle off),
-  /// which [inHomeBucket] places by date as usual.
-  static int? backlogTabIndex(Task task, HomeContexts? contexts) {
-    if (contexts == null || !contexts.backlog || !task.isWish) return null;
-    switch (backlogStateOf(task)) {
-      case BacklogStates.active:
-        return 0;
-      case BacklogStates.next:
-        return 3;
-      default:
-        return futureTabIndex;
-    }
+  /// The backlog state a wish takes when the home list moves it to tab
+  /// [tabIndex] by date: Next Week → Next, Next Month and Future → Someday.
+  /// Null for Today to Day After — those moves only change its due date, as
+  /// for any other task. (Wishes sit in the home tabs by due date like every
+  /// task; only a move this far out also changes their state.)
+  static String? backlogStateForTab(int tabIndex) {
+    if (tabIndex == 3) return BacklogStates.next;
+    if (tabIndex > 3) return BacklogStates.someday;
+    return null;
   }
 
-  /// The backlog state of a wish moved to home tab [tabIndex], the inverse
-  /// of [backlogTabIndex]: Today → Active, Tomorrow to Next Week → Next,
-  /// Next Month and Future → Someday.
-  static String backlogStateForTab(int tabIndex) {
-    if (tabIndex <= 0) return BacklogStates.active;
-    if (tabIndex <= 3) return BacklogStates.next;
-    return BacklogStates.someday;
+  /// Applies [backlogStateForTab] to [task] after the home list moved its due
+  /// date: a wish now in Next Week or further gets that state. Returns the
+  /// new state, or null when nothing changed (not a wish, a near move, or
+  /// already in that state).
+  static String? syncBacklogStateToDueDate(Task task, DateTime today) {
+    if (!task.isWish) return null;
+    var tab = 0;
+    while (tab < futureTabIndex && !inHomeBucket(task, tab, today)) {
+      tab++;
+    }
+    final state = backlogStateForTab(tab);
+    if (state == null || backlogStateOf(task) == state) return null;
+    setBacklogState(task, state);
+    return state;
   }
 
   /// Synthetic view-membership tokens for [task] — layered onto its real
@@ -301,7 +302,6 @@ class ItemViews {
 
   /// The tasks of home tab [tabIndex], sorted like the home list (open
   /// first, then by ranking). [where] adds an extra predicate (search).
-  /// With the Backlog toggle on, wishes go by state ([backlogTabIndex]).
   /// [rules] is the configured Home view filter, see [passesFilterRules].
   /// [includeWorklistItems] is true only for the Worklist tool's own
   /// instance of the home page, which reuses this same bucketing — see
@@ -322,9 +322,7 @@ class ItemViews {
                 rules: rules,
                 includeWorklistItems: includeWorklistItems,
                 contexts: contexts) &&
-            (backlogTabIndex(t, contexts) ??
-                    (inHomeBucket(t, tabIndex, today) ? tabIndex : -1)) ==
-                tabIndex)
+            inHomeBucket(t, tabIndex, today))
         .toList();
     sortTasks(list);
     return list;

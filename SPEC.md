@@ -729,19 +729,8 @@ on, a wish's Home filter rules are read without their `Wish` exclude tag (the
 seeded default hides wishes), every other tag still applies. Only the in-app
 home tabs and schedule view pass them (the widget, Wear and sync files never
 do); the `applySearch: false` full-tab callers that renumber `listRanking` see
-every context (`HomeContexts.all`, but with the real Backlog toggle so both
-lists bucket wishes alike), so a narrowed list never drives the renumbering.
-**Backlog items by state (0.2.133):** with Backlog on, a wish's home tab is its
-backlog state, not its due date — `ItemViews.backlogTabIndex`: Active → Today
-(0), Next → Next Week (3), Someday → Future (5); null with the toggle off, for
-non-wishes and for tool instances (no contexts), which bucket by date as before.
-`homeBucket` uses it ahead of `inHomeBucket`; the schedule view groups via
-`ScheduleView.dateOf` (home page `_scheduleDateOf`: the first day of that tab).
-Moving such an item (swipe/next page, move-to-tab, move-to-weekday, dice
-postpone) goes through `_moveBacklogItemToTab`, which calls `setBacklogState`
-with `ItemViews.backlogStateForTab(destination)` (Today → Active, Tomorrow–Next
-Week → Next, Next Month/Future → Someday) and leaves the due date alone; swiping
-cycles Active → Next → Someday → Active. `lemmonToken` (`'lemmon'`) is gated exactly like `mlr`
+every context (`HomeContexts.all`), so a narrowed list never drives the renumbering.
+**Backlog items on Home (0.2.134):** wishes sit in the home tabs and schedule view by due date like every task (0.2.133 placed them by state; reverted). Moving one (swipe/next page, move-to-tab, move-to-weekday, the tile's date picker) changes its date as usual, and the home page's `_syncBacklogStateToDueDate` → `ItemViews.syncBacklogStateToDueDate` also sets its state when the new date is in Next Week (→ Next) or Next Month/Future (→ Someday) — `ItemViews.backlogStateForTab`; Today to Day After leave the state alone. `lemmonToken` (`'lemmon'`) is gated exactly like `mlr`
 (`isVisibleInMainViews(includeLemmonItems:)`; `includeWorklistItems` lifts both,
 for the tool instances). **Tools ▸ Lemmon** is `HomePage(tagFilter: lemmonToken,
 toolTitle: 'Lemmon')`, amber accent instead of Worklist's orange.
