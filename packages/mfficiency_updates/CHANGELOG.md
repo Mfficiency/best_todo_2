@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.0 - 2026-10-29
+
+- **Problem reports to Claude:** `ProblemReporter` sends the user's
+  description, the app's facts and its logs as a GitHub issue labelled
+  `claude-fix` (body marked `<!-- mfficiency-problem-report -->`), which
+  the repo's `claude-fix.yml` workflow hands to Claude to fix and merge
+  into dev. With a fine-grained token (Issues: read and write) straight
+  from the app; without one GitHub's new-issue page opens filled in.
+  `ProblemReportTrigger` (double tap on the version in the menu),
+  `showProblemReport` (the sheet), `ProblemReportSettingsTile` (the token
+  and how to get it), `ProblemReportStrings` (English defaults).
+
 ## 1.6.3 - 2026-10-24
 
 - A public repo with a token downloads through the asset API too, so an

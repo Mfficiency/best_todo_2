@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.135] - 2026-10-29
+- Report a problem to Claude: double tap the app name and version at the top of the menu, describe what went wrong and tap Send to Claude. The app's logs (alarm log, sync history, app events) go along if you leave them on; Claude fixes it and the fix arrives as the next update. Settings → Updates → Problem reports to Claude explains the GitHub token that lets the app send it by itself (without one, the report opens on GitHub for you to submit). Updates package 1.7.0.
+
 ## [0.2.134] - 2026-10-29
 - Backlog items on Home behave like normal tasks again: they sit in the tab of their due date, and swiping one to Tomorrow or the Day after just moves its date. Only when you move one to Next week does it also become Next, and to Next month or Future, Someday.
 

@@ -64,6 +64,40 @@ Android installer (other platforms: checks only, no install).
   app's opener (`UpdatePlatform(openUrl: …)`): a private asset's signed
   link, else its github.com link.
 
+## Problem reports to Claude
+
+A **double tap on the version** in the app's menu opens "Report a problem
+to Claude": a field to describe it, the app's logs on/off, Send. The report
+becomes a GitHub issue in the app's repo (labelled `claude-fix`, body marked
+`<!-- mfficiency-problem-report -->`, logs cut from the oldest end to fit
+GitHub's 65 536 characters, the token blanked out of them). The repo's
+`.github/workflows/claude-fix.yml` hands issues the owner wrote with that
+marker to Claude (claude-code-action), which fixes the code, merges it into
+`dev` and pushes; the laptop builds that push as the next dev update.
+
+- **With a token** (Settings › Problem reports to Claude: a fine-grained
+  token, the app's repo or all app repos, *Issues: Read and write* only;
+  the tile explains the steps) the issue is created from the app.
+- **Without one** (or in a browser build) GitHub's new-issue page opens
+  with the report filled in (logs shortened to fit the URL); the user taps
+  Create.
+- **Once per repo:** the secret `CLAUDE_CODE_OAUTH_TOKEN` (`claude
+  setup-token`) or `ANTHROPIC_API_KEY`, for the workflow.
+
+```dart
+final reporter = ProblemReporter(
+  config: ProblemReportConfig(
+    appName: 'BestToDo', version: AppConfig.version, build: AppConfig.buildNumber,
+    channel: AppConfig.channel, githubRepo: 'Mfficiency/best_todo_2',
+  ),
+  collectLogs: () async => Log.recent.join('\n'), // the app's logs, newest last
+  openUrl: openInBrowser,                         // the browser fallback
+  // readToken/writeToken: default SharedPreferences `problem_report.github_token`
+);
+// Menu header:  ProblemReportTrigger(reporter: reporter, child: versionText)
+// Settings:     ProblemReportSettingsTile(reporter: reporter)
+```
+
 ## Full backup (before every update, and before a reinstall)
 
 `FullBackup` puts **everything the app keeps on the phone** into one file in

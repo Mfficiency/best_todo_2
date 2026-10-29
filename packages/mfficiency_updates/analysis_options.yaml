@@ -1,5 +1,9 @@
 # No include: apps that vendor this package analyze it with their own
 # dependencies, and not all of them have flutter_lints.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
 linter:
   rules:
     - avoid_print

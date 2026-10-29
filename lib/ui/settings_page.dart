@@ -25,6 +25,7 @@ import '../services/sync_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
 import '../services/app_updates.dart';
+import '../services/problem_reports.dart';
 import '../utils/date_time_format.dart';
 import 'approval_quick_tags_page.dart';
 import 'auto_tag_rules_page.dart';
@@ -234,6 +235,8 @@ class _SettingsPageState extends State<SettingsPage> {
         'update version release new build download install now'),
     _SettingsSearchEntry('GitHub token (optional)', 9,
         'update private repository key secret access'),
+    _SettingsSearchEntry('Problem reports to Claude', 14,
+        'bug problem report claude issue github token logs fix'),
     _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist approval waiting for approval projects archived '
         'deleted bin hide show tag exclude include only filter built in'),
@@ -2495,6 +2498,10 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: Text(_updateTokenSet ? 'Replace' : 'Add'),
           onTap: _editUpdateToken,
         ),
+        // Double tap on the name/version in the menu sends a report; this
+        // row holds the GitHub token that lets the app file it itself and
+        // explains how to get it (ProblemReports, SPEC.md §11).
+        ProblemReportSettingsTile(reporter: ProblemReports.instance),
       ],
     );
   }

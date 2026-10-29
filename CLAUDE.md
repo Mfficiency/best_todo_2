@@ -127,6 +127,13 @@ file is the short operational guide.
   `REQUEST_INSTALL_PACKAGES`, its receiver and channel; registered by Flutter). Tests fake
   it with `test/update/update_fakes.dart` (`fakeController` = `controllerFor` on fakes; the
   full backup only when a `FullBackup` is passed as `backup:`).
+- Report a problem to Claude (SPEC.md §11): a double tap on the drawer header (name +
+  version) opens the package's report sheet; `lib/services/problem_reports.dart`
+  (`ProblemReports`) only passes the repo, the logs (sync + Todoist sync history,
+  `alarm_log.txt`, `LogService`) and the token (secure storage; Settings → Updates →
+  Problem reports to Claude). The issue (label `claude-fix`) runs
+  `.github/workflows/claude-fix.yml`, which needs the repo secret `CLAUDE_CODE_OAUTH_TOKEN`
+  (`claude setup-token`) or `ANTHROPIC_API_KEY`.
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`

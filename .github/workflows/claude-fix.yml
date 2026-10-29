@@ -1,0 +1,125 @@
+name: Claude fixes problem reports
+
+# A problem report sent from the app (double tap on the version in the menu,
+# mfficiency_updates' ProblemReporter) is an issue with the marker
+# <!-- mfficiency-problem-report --> and the label claude-fix. Claude reads it
+# (description + the app's logs), fixes the code like any other request
+# (CLAUDE.md / AGENTS.md: tests, version bump, changelog), merges the fix into
+# dev (main where there is no dev) and pushes; the push is what the laptop
+# builds and releases. Then it answers on the issue and closes it.
+#
+# Runs only for issues the owner (or a member/collaborator) wrote: a stranger's
+# issue on a public repo never reaches Claude. A hand-written issue gets the same
+# treatment when the claude-fix label is added to it.
+#
+# Needs one secret (Settings > Secrets and variables > Actions):
+#   CLAUDE_CODE_OAUTH_TOKEN  from `claude setup-token` (Claude Pro/Max), or
+#   ANTHROPIC_API_KEY        from console.anthropic.com.
+# The Claude GitHub app (github.com/apps/claude) must be installed on the repo.
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+  actions: write
+
+concurrency:
+  group: claude-fix-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: >-
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
+      ((github.event.action == 'opened' && contains(github.event.issue.body, '<!-- mfficiency-problem-report -->')) ||
+       (github.event.action == 'labeled' && github.event.label.name == 'claude-fix' && !contains(github.event.issue.body, '<!-- mfficiency-problem-report -->')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Pick the branch fixes land on
+        id: base
+        env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$REPO/branches/dev" --silent 2>/dev/null; then
+            echo "branch=dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.base.outputs.branch }}
+          fetch-depth: 0
+
+      # Same Flutter as flutter_test.yml.
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.2'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Say it's being looked at
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --body "Claude is looking into this ([run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))."
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: >-
+            --max-turns 300
+            --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,WebFetch,TodoWrite"
+          prompt: |
+            The owner reported a problem from inside the app: issue #${{ github.event.issue.number }}
+            in ${{ github.repository }}. Read it with `gh issue view ${{ github.event.issue.number }}`
+            (title, description, app version, platform and the app's logs).
+
+            Handle it exactly like any other request in this repo:
+            1. Read CLAUDE.md (and AGENTS.md / the files it points to) first and follow them.
+            2. Find the root cause in the logs and the code. Fix it; add or adjust a test that
+               would have caught it.
+            3. Bump the version and add the user-facing changelog entry the repo asks for.
+            4. Run the repo's checks (what CLAUDE.md names; here `flutter analyze --no-pub`
+               adding no new issues, and `flutter test --timeout 60s`)
+               until they pass.
+            5. Commit on a branch `claude-fix/issue-${{ github.event.issue.number }}` with a message
+               ending in "Fixes #${{ github.event.issue.number }}", merge `origin/${{ steps.base.outputs.branch }}`
+               into it, then merge it into `${{ steps.base.outputs.branch }}` and
+               `git push origin ${{ steps.base.outputs.branch }}`. That push ships the update.
+            6. Comment on the issue (`gh issue comment`): what was wrong, what changed, the new
+               version and the commit; then close it (`gh issue close`).
+
+            If the report doesn't show enough to find the cause, don't push a guess: comment on
+            the issue with what you checked and what is needed (e.g. which steps, which log),
+            and leave it open.
+
+      - name: Ask the laptop to build the fix
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.base.outputs.branch }}
+        run: |
+          # The push above normally triggers "Laptop build" itself; a push made
+          # with the workflow's own token doesn't, so ask for it (a build of the
+          # same code twice publishes nothing the second time).
+          gh workflow run laptop-build.yml --ref "$BRANCH" || true
+
+      - name: Report a failed run on the issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --body "Claude couldn't finish this one ([run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})). Is the secret CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) set?"

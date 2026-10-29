@@ -146,7 +146,7 @@ final List<SuiteRule> suiteRules = [
   // The updates adapter and the pages around the package's controller
   // (About, Settings, the Changelog's status card).
   SuiteRule([
-    'lib/services/app_updates.dart', 'lib/ui/about_page.dart',
+    'lib/services/app_updates.dart', 'lib/services/problem_reports.dart', 'lib/ui/about_page.dart',
   ], {'update', 'home'}),
   SuiteRule(['lib/utils/linkified_text.dart', 'lib/ui/task_detail_page.dart', 'lib/ui/task_info_dialog.dart'], {'home', 'tools'}),
   SuiteRule(['AlarmsWidgetProvider.kt'], {'alarms', 'home'}),

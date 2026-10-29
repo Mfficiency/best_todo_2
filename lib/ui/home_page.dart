@@ -28,6 +28,7 @@ import '../services/item_event_journal.dart';
 import '../services/item_repository.dart';
 import '../services/item_views.dart';
 import '../services/log_service.dart';
+import '../services/problem_reports.dart';
 import '../services/project_service.dart';
 import '../services/recurrence_service.dart';
 import '../services/reminder_sync_service.dart';
@@ -3358,14 +3359,19 @@ class _HomePageState extends State<HomePage>
       drawer: Drawer(
         child: ListView(
           children: [
-            Container(
-              padding: const EdgeInsets.all(16), // adjust as you like
-              color: Theme.of(context).colorScheme.primary,
-              child: Text(
-                '${widget.toolTitle ?? 'BestToDo'} v${Config.version}',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onPrimary,
-                  fontSize: 18,
+            // Double tap on the name/version: "Report a problem to Claude"
+            // (ProblemReports, SPEC.md §11).
+            ProblemReportTrigger(
+              reporter: ProblemReports.instance,
+              child: Container(
+                padding: const EdgeInsets.all(16), // adjust as you like
+                color: Theme.of(context).colorScheme.primary,
+                child: Text(
+                  '${widget.toolTitle ?? 'BestToDo'} v${Config.version}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontSize: 18,
+                  ),
                 ),
               ),
             ),

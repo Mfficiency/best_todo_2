@@ -3823,6 +3823,44 @@ in App Logs → Todoist — onboarding has already finished by then.
       applicationId, backs up the current data first, replaces it all and restarts.
       Android only. `PreUpdateBackup` (§4.2f) still runs before a new version's first
       write.
+    - **Report a problem to Claude (0.2.135, package 1.7.0):** a **double tap on the
+      drawer header** ("BestToDo v<x.y.z>", `home_page.dart`, wrapped in the package's
+      `ProblemReportTrigger`, `Key('problemReport.trigger')`; a single tap does nothing, as
+      before) opens the package's sheet "Report a problem to Claude": a description field,
+      an "Include the app's logs" switch (with the line count) and "Send to Claude".
+      `lib/services/problem_reports.dart` (`ProblemReports`) holds only the app's config:
+      `ProblemReports.instance` (made on first use; tests set a fake) =
+      `ProblemReporter(ProblemReportConfig(appName 'BestToDo', Config.version/buildNumber/
+      channel, githubRepo AppUpdates.githubRepo))`, the token in `flutter_secure_storage`
+      (`AppUpdates.secureStorage`, key `problem_report.github_token`), links opened with
+      url_launcher (external app), and `collectLogs`: one `===== <source> =====` header per
+      source, the most useful last (the package keeps the newest end when the body is too
+      long) — the folder-sync history (`sync_log.json`), the Todoist sync history
+      (`todoist_sync_log.json`), oldest run first, the newest 30 000 characters of
+      `alarm_log.txt` (§5.3), then the in-memory app log (`LogService`, App Logs › Events,
+      last 24 h). A source that can't be read says so. Send creates a GitHub issue in
+      `Mfficiency/best_todo_2` labelled `claude-fix`, body starting with
+      `<!-- mfficiency-problem-report -->`: the description, version/build/channel,
+      platform, time and the logs (cut to GitHub's 65 536 characters, the token blanked
+      out). With a token (Settings → Updates → **Problem reports to Claude**, the package's
+      `ProblemReportSettingsTile`: says whether one is saved; tapping it explains how to get
+      a fine-grained token — repository access this repo or all app repos, Repository
+      permissions › Issues: Read and write, nothing else — with a "Create a token on GitHub"
+      button, the field saved as typed, Remove, Close, and the one-time repo secret below)
+      the app posts it through the API; without one GitHub's new-issue page opens in the
+      browser filled in (logs shortened to fit the URL) and the owner taps Create.
+      `.github/workflows/claude-fix.yml` (copied from the template; Flutter 3.29.2 as in
+      `flutter_test.yml`) runs `anthropics/claude-code-action` on issues the owner, a member
+      or a collaborator wrote — opened with the marker, or a hand-written one given the
+      `claude-fix` label: Claude reads the issue, fixes the code following CLAUDE.md, bumps
+      version + changelog, runs `flutter analyze --no-pub` and `flutter test`, merges into
+      `dev` and pushes, comments and closes the issue; then the job runs
+      `gh workflow run laptop-build.yml --ref dev` (a push with the workflow token triggers
+      no workflow; the same code twice publishes nothing), so the fix ships as the next dev
+      update. A failed run comments on the issue. **Once per repo:** the Actions secret
+      `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`, Claude Pro/Max) or
+      `ANTHROPIC_API_KEY` (console.anthropic.com), and the Claude GitHub app installed.
+      Tests: `test/update/problem_report_test.dart`.
     - **Behaviour (the package's):** checks on the first frame when the last check is 15+
       minutes old, every 15 minutes while in the foreground, **when the app comes back to
       the foreground** and the last check is 15+ minutes old, when the switch is turned on,
