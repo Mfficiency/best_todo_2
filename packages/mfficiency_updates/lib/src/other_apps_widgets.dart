@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'github_token_dialog.dart';
 import 'other_apps.dart';
 
 /// Every text of "Other apps", English by default.
@@ -40,15 +41,15 @@ class OtherAppsStrings {
         '3. Permissions › Repository permissions › Contents: "Read-only". '
         'Add Issues: "Read and write" too and the same token also sends '
         'problem reports to Claude.\n'
-        '4. Generate token, copy it and paste it here. It stays on this '
+        '4. Generate token, copy it and paste it above. It stays on this '
         'phone.\n'
         '\n'
         'Without a token, Open on GitHub shows the app\'s releases in the '
         'browser, where you are logged in.',
-    this.tokenLabel = 'GitHub token (Contents: Read-only)',
-    this.createToken = 'Create a token on GitHub',
-    this.removeToken = 'Remove token',
-    this.close = 'Close',
+    this.tokenSummary =
+        'Downloads the apps in private repositories (Contents: Read-only).',
+    this.tokenLabel = 'GitHub token',
+    this.tokenDialog = const GithubTokenStrings(),
     this.tokenTooltip = 'GitHub token',
   });
 
@@ -72,10 +73,9 @@ class OtherAppsStrings {
   final String actionFailed;
   final String tokenTitle;
   final String tokenHelp;
+  final String tokenSummary;
   final String tokenLabel;
-  final String createToken;
-  final String removeToken;
-  final String close;
+  final GithubTokenStrings tokenDialog;
   final String tokenTooltip;
 
   static String _installed(String version) => 'Installed: $version';
@@ -175,10 +175,16 @@ class _OtherAppsPageState extends State<OtherAppsPage>
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (_) => _TokenDialog(
-        controller: c,
-        strings: widget.strings,
-        initial: before,
+      builder: (_) => GithubTokenDialog(
+        title: widget.strings.tokenTitle,
+        label: widget.strings.tokenLabel,
+        summary: widget.strings.tokenSummary,
+        help: widget.strings.tokenHelp,
+        readToken: c.ownToken,
+        writeToken: c.setToken,
+        openUrl: c.platform.openUrl,
+        fieldKey: const Key('otherApps.token'),
+        strings: widget.strings.tokenDialog,
       ),
     );
     if (await c.ownToken() != before) await c.load(force: true);
@@ -338,96 +344,6 @@ class _AppCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// The page's token: the explanation, a link to GitHub's token page and the
-/// field, saved as typed (no Save button).
-class _TokenDialog extends StatefulWidget {
-  const _TokenDialog({
-    required this.controller,
-    required this.strings,
-    required this.initial,
-  });
-
-  final OtherAppsController controller;
-  final OtherAppsStrings strings;
-  final String? initial;
-
-  @override
-  State<_TokenDialog> createState() => _TokenDialogState();
-}
-
-class _TokenDialogState extends State<_TokenDialog> {
-  late final _token = TextEditingController(text: widget.initial ?? '');
-  late var _hasToken = widget.initial != null;
-  Future<void> _saving = Future.value();
-
-  @override
-  void dispose() {
-    _token.dispose();
-    super.dispose();
-  }
-
-  void _save(String value) {
-    _saving = _saving.then((_) => widget.controller.setToken(value));
-    setState(() => _hasToken = value.trim().isNotEmpty);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = widget.strings;
-    return AlertDialog(
-      title: Text(s.tokenTitle),
-      scrollable: true,
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SelectableText(s.tokenHelp),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            key: const Key('otherApps.createToken'),
-            onPressed: () => widget.controller.platform.openUrl(
-              'https://github.com/settings/personal-access-tokens/new',
-            ),
-            icon: const Icon(Icons.open_in_new),
-            label: Text(s.createToken),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            key: const Key('otherApps.token'),
-            controller: _token,
-            obscureText: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            onChanged: _save,
-            decoration: InputDecoration(
-              labelText: s.tokenLabel,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        if (_hasToken)
-          TextButton(
-            onPressed: () {
-              _token.clear();
-              _save('');
-            },
-            child: Text(s.removeToken),
-          ),
-        TextButton(
-          onPressed: () async {
-            final nav = Navigator.of(context);
-            await _saving;
-            nav.pop();
-          },
-          child: Text(s.close),
-        ),
-      ],
     );
   }
 }

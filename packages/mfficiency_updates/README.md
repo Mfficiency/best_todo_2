@@ -344,3 +344,8 @@ settings list, with its strings:
 | Debugging | `ProblemReportSendTile` (Send a report) · `ProblemReportSettingsTile` (GitHub token) |
 | Updates | the app's "check automatically" switch · `UpdateCheckTile` · `UpdateTokenTile` (GitHub token: `readToken`/`writeToken`, then `controller.reloadToken()`; pair it with `UpdateConfig.tokenProvider`) |
 | Backup & data | `FullBackupNowTile` · `FullBackupRestoreTile` · `FullBackupLocationTile` · `FullBackupScheduleTile` (Off/Daily/Weekly) · `FullBackupLastTile` — or `FullBackupTiles`, all five in that order |
+
+All three GitHub tokens (problem reports, updates, other apps) open the same
+`GithubTokenDialog`: field first (show, copy), one short line, the steps
+folded under "How to get a token", Close always visible, saved as typed.
+The rows only say "Token set" or "No token".

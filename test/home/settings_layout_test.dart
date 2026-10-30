@@ -39,6 +39,7 @@ void main() {
     AppUpdates.backup = null;
     Config.autoBackupFrequency = 'off';
     Config.compactMode = false;
+    Config.whatsNewEnabled = true;
   });
 
   FullBackup androidBackup() => FullBackup(
@@ -80,8 +81,81 @@ void main() {
     }
   }
 
-  testWidgets('sections: Appearance first; Debugging, Updates, Backup & data '
-      'last', (tester) async {
+  /// The title of every row (ListTile) of section [title], top to bottom.
+  List<String> rowsOf(WidgetTester tester, String title) {
+    final card = find
+        .ancestor(
+            of: find.byTooltip('Collapse $title'), matching: find.byType(Card))
+        .first;
+    return [
+      for (final tile in tester.widgetList<ListTile>(
+          find.descendant(of: card, matching: find.byType(ListTile))))
+        tester
+            .widget<Text>(find
+                .descendant(
+                    of: find.byWidget(tile.title!),
+                    matching: find.byType(Text),
+                    matchRoot: true)
+                .first)
+            .data!,
+    ];
+  }
+
+  testWidgets('Debugging, Updates and Backup & data hold exactly their rows',
+      (tester) async {
+    fakeController(github: FakeGithub(), downloader: FakeDownloader());
+    await pumpSettings(tester);
+    await openSection(tester, 'Debugging');
+    expect(rowsOf(tester, 'Debugging'), ['Send a report', 'GitHub token']);
+    await openSection(tester, 'Updates');
+    expect(rowsOf(tester, 'Updates'),
+        ['Check automatically', 'Check for updates', 'GitHub token']);
+    await openSection(tester, 'Backup & data');
+    expect(rowsOf(tester, 'Backup & data'), [
+      'Back up everything',
+      'Restore from a backup',
+      'Backup location',
+      'Automatic backup',
+      'Last backup',
+    ]);
+  });
+
+  testWidgets("Backup & data on Android holds exactly the full backup's rows",
+      (tester) async {
+    AppUpdates.backup = androidBackup();
+    await pumpSettings(tester);
+    await openSection(tester, 'Backup & data');
+    expect(rowsOf(tester, 'Backup & data'), [
+      'Back up everything',
+      'Restore from a backup',
+      'Backup location',
+      'Automatic backup',
+      'Last backup',
+    ]);
+  });
+
+  testWidgets("Releases: the what's new switch, on by default, saved",
+      (tester) async {
+    await pumpSettings(tester);
+    await openSection(tester, 'Releases');
+    expect(rowsOf(tester, 'Releases'), ["Show what's new after an update"]);
+    final tile = find.widgetWithText(
+        SwitchListTile, "Show what's new after an update");
+    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    await tester.tap(tile);
+    for (var i = 0; i < 60; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+    expect(Config.whatsNewEnabled, isFalse);
+    Config.whatsNewEnabled = true;
+    await tester.runAsync(Config.load);
+    expect(Config.whatsNewEnabled, isFalse, reason: 'persisted');
+  });
+
+  testWidgets('sections: Appearance first; Releases, Debugging, Updates, '
+      'Backup & data last', (tester) async {
     await pumpSettings(tester);
     // The section chips list every visible section, in page order.
     // (Sections start collapsed, so the only chips are the section chips.)
@@ -91,8 +165,8 @@ void main() {
         .toList();
     expect(chips, contains('Debugging'));
     expect(chips.first, 'Appearance');
-    expect(chips.sublist(chips.length - 3),
-        ['Debugging', 'Updates', 'Backup & data']);
+    expect(chips.sublist(chips.length - 4),
+        ['Releases', 'Debugging', 'Updates', 'Backup & data']);
   });
 
   testWidgets('Appearance: Dark mode, Compact mode, Time format, Date format '

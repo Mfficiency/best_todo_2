@@ -7,6 +7,7 @@ export 'src/backup.dart';
 export 'src/config.dart';
 export 'src/controller.dart';
 export 'src/downloader.dart';
+export 'src/github_token_dialog.dart';
 export 'src/http.dart';
 export 'src/legacy.dart';
 export 'src/other_apps.dart';
