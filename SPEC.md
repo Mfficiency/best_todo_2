@@ -283,6 +283,15 @@ export cannot fake a recent backup. Backups read straight from disk
 (`readTaskListRaw` etc., not the home page's in-memory list), are written as
 `besttodo_backup_<yyyymmdd_hhmmss>.json` and restore through the regular Import button.
 The Backup section also offers a "Back up now" tile and shows the last backup time.
+**Since 0.2.137 this folder backup is retired on Android** (`AppUpdates.fullBackupShown`):
+there Backup & data shows only the shared full backup's rows and `maybeRun` does nothing;
+a daily/weekly folder schedule is taken over once by the full backup's schedule
+(`AppUpdates.adoptFolderBackupSchedule`, after `Config.load`, only while the full backup
+has no schedule of its own). Its settings and the files already written stay (the JSON
+files still restore through Sync & export → Import). Elsewhere (Windows) it is still the
+backup, shown as the standard rows: Back up everything (= Back up now), Restore from a
+backup (= Import), Backup location (the folder), Automatic backup (Off/Daily/Weekly), Last
+backup.
 
 Next to that JSON file, the same run writes a same-timestamped folder
 `besttodo_backup_<yyyymmdd_hhmmss>/` — a Markdown mirror
@@ -1459,8 +1468,16 @@ tag" note.
 **Section order and frame (0.2.118, the layout shared by every Mfficiency app, Vesta Immo's
 Settings page):** Appearance, Mode & features, Filtering rules, Notifications, Tasks, Streak,
 Dice timer, SMS report, Widget, Todoist sync, Sync & export, Weekly Hours Planner, Wishlist
-build, Claude Routine, **Updates** (second to last) and **Backup & data** (last; it was
-"Backup"). The order of `_sectionTitles` is the page order: section indexes, the search
+build, Claude Routine, **Debugging** (0.2.137), **Updates** and **Backup & data** (last; it
+was "Backup"). The first rows of Appearance, Debugging, Updates and Backup & data are the
+same in every Mfficiency app (flutter_app_template docs/CONCEPT.md §5, package 1.9.0;
+`settings_layout_test.dart` pins them): Appearance › Dark mode, Compact mode, Time format,
+Date format, then Minimalist mode, Use tab icons, Red dot for failed tests; Debugging ›
+Send a report (`ProblemReportSendTile`), GitHub token (`ProblemReportSettingsTile`);
+Updates › Check automatically, Check for updates (`UpdateCheckTile`), GitHub token
+(`UpdateTokenTile`); Backup & data › Back up everything, Restore from a backup, Backup
+location, Automatic backup, Last backup (`FullBackupTiles` on Android, see §2 Automatic
+backup). The order of `_sectionTitles` is the page order: section indexes, the search
 registry, the visibility switch, the chip row and the scroll tracking all go by it, so a new
 section is inserted before Updates and the indexes after it shift. Cards have a 4 px gap
 (`margin: bottom 4`), end with `SizedBox(height: 8)` when open, the pinned chip header is 64
@@ -1474,9 +1491,11 @@ monochrome ink-on-paper `buildMinimalistTheme(brightness)` in `main.dart` — pu
 only, transparent `surfaceTint`, no ink splashes, selected chips underlined via a
 `WidgetStateTextStyle` label instead of a colour fill; the orange/red/green swipe
 backdrops in `task_tile.dart`/`home_page.dart` turn neutral ink; combines with dark
-mode), icon tabs, "Red dot for failed tests" (`showFailureDotOnMenu`, default **off**:
+mode), compact mode (0.2.137, `Config.compactMode`, default off: `applyCompactMode` in
+`main.dart` gives every theme compact visual density, compact list tiles, a 52 high app bar
+and dense inputs; tap targets stay padded to 48), icon tabs, "Red dot for failed tests" (`showFailureDotOnMenu`, default **off**:
 marks the home hamburger icon while the newest test run has unacknowledged failures,
-see §4.3), 24-hour time (default on), date format (6 choices,
+see §4.3), time format (24-hour / 12-hour, `use24HourFormat`, default 24-hour), date format (6 choices,
 default `dd.MM.yy`). Tasks: add-to-top, "New tasks go to" (`defaultAddTabIndex`, default
 "Current tab", see §4.3), swipe-left-delete, default delay 0–10 s slider,
 start tab (simple mode hides the tool-related entries, see §4.6), default start page
@@ -3756,16 +3775,16 @@ in App Logs → Todoist — onboarding has already finished by then.
     above the installed versionCode (the same rule Android applies), whatever its x.y.z or
     channel. So the phone always ends up on the newest built commit of any branch. The
     updater never reads `github_releases/`.
-  - **Optional GitHub token (0.2.121, package 1.6.3):** Settings → Updates → "GitHub token
-    (optional)" ("Only needed if this app's repo is private") pastes, replaces or removes a
-    read-only token (fine-grained, `Mfficiency/best_todo_2` only, Contents: read). It lives in
+  - **Optional GitHub token (0.2.121, package 1.6.3; the package's `UpdateTokenTile` since
+    0.2.137):** Settings → Updates → "GitHub token" pastes, replaces or removes a
+    read-only token (fine-grained, `Mfficiency/best_todo_2` or all app repos, Contents: read). It lives in
     `flutter_secure_storage` (key `updates.github_token`, Android Keystore-encrypted, never in
     SharedPreferences/settings.json/the full backup/the log); `AppUpdates.readToken` is the
-    package's `tokenProvider`, `AppUpdates.saveToken` stores/removes it and calls the
-    controller's `reloadToken()` (checks at once). `privateRepo` stays **false**: without a
+    package's `tokenProvider`, `AppUpdates.writeToken` stores/removes it (the tile saves as
+    it is typed, then calls the controller's `reloadToken()`, which checks at once). `privateRepo` stays **false**: without a
     token everything is anonymous exactly as before; with one, checks send it and (package
     1.6.3) the APK downloads through the asset API, so updates keep working if the repo is
-    made private later. The row shows only "Saved on this phone (••••••••)", never the value.
+    made private later. The row shows only whether a token is set, never the value.
   - **Shared updates package (0.2.107 / Best Music 0.3.27; the same code as Hally Remote,
     BestCollage, Vesta Immo and the template):** `packages/mfficiency_updates` is a Flutter
     plugin (Dart controller + widgets, Android installer) **vendored** from
@@ -3818,7 +3837,9 @@ in App Logs → Todoist — onboarding has already finished by then.
       file in `BestToDo/` on shared storage; the user's own files), caches, and the native
       SharedPreferences of home_widget / flutter_local_notifications / the Wear command
       queue (rebuilt from the data). Settings → Backup & data starts with `FullBackupTiles`
-      ("Back up everything", "Restore from a backup"); after the first frame a new install
+      (Back up everything, Restore from a backup, Backup location, Automatic backup
+      off/daily/weekly — default weekly, `startSchedule()` after the first frame —, Last
+      backup); after the first frame a new install
       is offered a restore once (`offerRestore`, `_startUpdates`). Restore checks the
       applicationId, backs up the current data first, replaces it all and restarts.
       Android only. `PreUpdateBackup` (§4.2f) still runs before a new version's first
@@ -3842,8 +3863,8 @@ in App Logs → Todoist — onboarding has already finished by then.
       `Mfficiency/best_todo_2` labelled `claude-fix`, body starting with
       `<!-- mfficiency-problem-report -->`: the description, version/build/channel,
       platform, time and the logs (cut to GitHub's 65 536 characters, the token blanked
-      out). With a token (Settings → Updates → **Problem reports to Claude**, the package's
-      `ProblemReportSettingsTile`: says whether one is saved; tapping it explains how to get
+      out). With a token (Settings → Debugging → **GitHub token**, the package's
+      `ProblemReportSettingsTile`, below **Send a report**: says whether one is saved; tapping it explains how to get
       a fine-grained token — repository access this repo or all app repos, Repository
       permissions › Issues: Read and write, nothing else — with a "Create a token on GitHub"
       button, the field saved as typed, Remove, Close, and the one-time repo secret below)

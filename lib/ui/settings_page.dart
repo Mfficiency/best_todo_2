@@ -59,7 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    16,
+    17,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -77,6 +77,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'Weekly Hours Planner',
     'Wishlist build',
     'Claude Routine',
+    // The last three are the same in every Mfficiency app, in this order.
+    'Debugging',
     'Updates',
     'Backup & data',
   ];
@@ -141,13 +143,16 @@ class _SettingsPageState extends State<SettingsPage> {
   /// [_sectionTitles]; keywords add synonyms users may type instead.
   static const List<_SettingsSearchEntry> _searchEntries = [
     _SettingsSearchEntry('Dark mode', 0, 'theme light appearance color'),
+    _SettingsSearchEntry('Compact mode', 0,
+        'dense density spacing tight small rows smaller padding'),
+    _SettingsSearchEntry(
+        'Time format', 0, 'clock am pm 12-hour 24-hour hour format'),
+    _SettingsSearchEntry('Date format', 0, 'display day month year'),
     _SettingsSearchEntry('Minimalist mode', 0,
         'theme monochrome serene calm plain simple no colours colors underline'),
     _SettingsSearchEntry('Use tab icons', 0, 'tabs labels home'),
     _SettingsSearchEntry('Red dot for failed tests', 0,
         'menu hamburger drawer badge notification ci test results dot'),
-    _SettingsSearchEntry('24-hour time', 0, 'clock am pm 12-hour format'),
-    _SettingsSearchEntry('Date format', 0, 'display day month year'),
     _SettingsSearchEntry(
         'Simple mode', 1, 'full mode basic minimal features hide tools'),
     _SettingsSearchEntry(
@@ -217,26 +222,29 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Export Settings', 10, 'backup save json'),
     _SettingsSearchEntry('Export Everything', 10, 'backup save json'),
     _SettingsSearchEntry('Import', 10, 'restore backup load json'),
-    _SettingsSearchEntry('Back up everything', 15,
-        'full backup downloads update uninstall reinstall all data'),
-    _SettingsSearchEntry('Restore from a backup', 15,
+    _SettingsSearchEntry('Back up everything', 16,
+        'full backup now downloads update uninstall reinstall all data'),
+    _SettingsSearchEntry('Restore from a backup', 16,
         'full backup downloads import reinstall all data'),
-    _SettingsSearchEntry('Automatic backup', 15,
-        'daily weekly schedule export save everything off'),
-    _SettingsSearchEntry('Backup folder', 15, 'directory location path choose'),
-    _SettingsSearchEntry('Back up now', 15, 'manual backup export run'),
+    _SettingsSearchEntry('Backup location', 16,
+        'folder directory downloads path choose where'),
+    _SettingsSearchEntry('Automatic backup', 16,
+        'daily weekly schedule save everything off'),
+    _SettingsSearchEntry('Last backup', 16, 'when backed up date time'),
     _SettingsSearchEntry(
         'Enable Todoist sync', 9, 'two-way api key token integration'),
     _SettingsSearchEntry('Todoist API token', 9, 'key integration secret'),
     _SettingsSearchEntry('Sync with Todoist now', 9, 'manual run two-way'),
-    _SettingsSearchEntry('Automatically update', 14,
+    _SettingsSearchEntry('Send a report', 14,
+        'bug problem report claude issue logs fix debugging'),
+    _SettingsSearchEntry('GitHub token', 14,
+        'problem report claude issue key secret debugging'),
+    _SettingsSearchEntry('Check automatically', 15,
         'auto update version release new build startup prompt install about'),
-    _SettingsSearchEntry('Check for updates', 14,
+    _SettingsSearchEntry('Check for updates', 15,
         'update version release new build download install now'),
-    _SettingsSearchEntry('GitHub token (optional)', 9,
+    _SettingsSearchEntry('GitHub token', 15,
         'update private repository key secret access'),
-    _SettingsSearchEntry('Problem reports to Claude', 14,
-        'bug problem report claude issue github token logs fix'),
     _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist approval waiting for approval projects archived '
         'deleted bin hide show tag exclude include only filter built in'),
@@ -269,6 +277,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _swipeLeftDelete = Config.swipeLeftDelete;
   bool _darkMode = Config.darkMode;
   bool _minimalistMode = Config.minimalistMode;
+  bool _compactMode = Config.compactMode;
   bool _useIconTabs = Config.useIconTabs;
   bool _showFailureDotOnMenu = Config.showFailureDotOnMenu;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
@@ -318,9 +327,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _githubTestResult;
   bool _githubTestSucceeded = false;
 
-  /// A GitHub token for the updater is saved (secure storage; the value
-  /// itself is never kept here). Loaded in [initState].
-  bool _updateTokenSet = false;
   final TextEditingController _claudeRoutineUrlController =
       TextEditingController(text: Config.claudeRoutineUrl);
   final TextEditingController _claudeRoutineTokenController =
@@ -353,6 +359,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _swipeLeftDelete = Config.swipeLeftDelete;
     _darkMode = Config.darkMode;
     _minimalistMode = Config.minimalistMode;
+    _compactMode = Config.compactMode;
     _useIconTabs = Config.useIconTabs;
     _showFailureDotOnMenu = Config.showFailureDotOnMenu;
     _showWidgetProgressLine = Config.showWidgetProgressLine;
@@ -404,7 +411,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadSmsConfig();
     _loadLastAutoBackup();
     _loadGoogleCalendarStatus();
-    _loadUpdateToken();
     // Lazy, fire-and-forget: the "Sync now" tile shows the last sync from the
     // persisted history once it arrives.
     unawaited(SyncService.instance.ensureLoaded());
@@ -1693,72 +1699,92 @@ class _SettingsPageState extends State<SettingsPage> {
         '${two(dt.hour)}:${two(dt.minute)}';
   }
 
+  /// Backup & data (the same rows in every Mfficiency app): Back up
+  /// everything · Restore from a backup · Backup location · Automatic
+  /// backup · Last backup. On Android these are the shared full backup's
+  /// (`Download/BestToDo/Backups`, also before every update); the folder
+  /// backup ([AutoBackupService]) is retired there so there is one
+  /// automatic backup ([AppUpdates.fullBackupShown]). Elsewhere (Windows)
+  /// the same rows drive the folder backup: one JSON file restorable
+  /// through Import, plus Markdown notes for Obsidian.
   Widget _buildBackupSection() {
-    final folderChosen = _autoBackupDirectory.isNotEmpty;
+    final backup = AppUpdates.backup;
     return _buildSection(
-      index: 15,
+      index: 16,
       title: 'Backup & data',
       children: [
-        // Everything to Download/BestToDo/Backups (also before every
-        // update), and restore from such a file. Android only.
-        if (AppUpdates.backup case final backup?)
-          FullBackupTiles(backup: backup),
-        ListTile(
-          title: const Text('Automatic backup'),
-          subtitle: Text(switch (_autoBackupFrequency) {
-            'daily' => 'Writes a full backup once a day when you open the app',
-            'weekly' =>
-              'Writes a full backup once a week when you open the app',
-            _ => 'No automatic backups',
-          }),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: SegmentedButton<String>(
-            segments: [
-              for (var i = 0; i < Config.autoBackupFrequencies.length; i++)
-                ButtonSegment(
-                  value: Config.autoBackupFrequencies[i],
-                  label: Text(Config.autoBackupFrequencyLabels[i]),
-                ),
-            ],
-            selected: {_autoBackupFrequency},
-            onSelectionChanged: (selection) =>
-                _setAutoBackupFrequency(selection.first),
-          ),
-        ),
-        ListTile(
-          title: const Text('Backup folder'),
-          subtitle: Text(
-            folderChosen ? _autoBackupDirectory : 'Not set — tap to choose',
-          ),
-          trailing: const Icon(Icons.folder_open),
-          onTap: _pickBackupFolder,
-        ),
-        ListTile(
-          enabled: folderChosen,
-          leading: const Icon(Icons.backup),
-          title: const Text('Back up now'),
-          subtitle: Text(
-            _lastAutoBackup == null
-                ? (folderChosen
-                    ? 'No backup yet'
-                    : 'Choose a backup folder first')
-                : 'Last backup: ${_formatDateTime(_lastAutoBackup!)}',
-          ),
-          onTap: folderChosen ? _backupNow : null,
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Text(
-            'Each backup writes one timestamped JSON file with everything — '
-            'tasks, settings and timers — restorable with Export → Import — '
-            'plus a matching folder of Markdown notes (one per task, project, '
-            'alarm and timer) readable straight in Obsidian.',
-          ),
-        ),
+        if (backup != null && AppUpdates.fullBackupShown)
+          FullBackupTiles(
+            backup: backup,
+            strings: const FullBackupStrings(dateTime: formatTimerDateTime),
+          )
+        else
+          ..._folderBackupRows(),
       ],
     );
+  }
+
+  /// [_buildBackupSection]'s rows where the full backup isn't available.
+  List<Widget> _folderBackupRows() {
+    final folderChosen = _autoBackupDirectory.isNotEmpty;
+    return [
+      ListTile(
+        enabled: folderChosen,
+        leading: const Icon(Icons.backup_outlined),
+        title: const Text('Back up everything'),
+        subtitle: Text(folderChosen
+            ? 'One JSON file with everything (restorable with Import), plus '
+                'Markdown notes for Obsidian'
+            : 'Choose a backup location first'),
+        onTap: folderChosen ? _backupNow : null,
+      ),
+      if (widget.onImportRequested case final onImport?)
+        ListTile(
+          leading: const Icon(Icons.settings_backup_restore),
+          title: const Text('Restore from a backup'),
+          subtitle: const Text("Pick a backup's JSON file to import"),
+          onTap: onImport,
+        ),
+      ListTile(
+        leading: const Icon(Icons.folder_outlined),
+        title: const Text('Backup location'),
+        subtitle: Text(
+          folderChosen ? _autoBackupDirectory : 'Not set — tap to choose',
+        ),
+        onTap: _pickBackupFolder,
+      ),
+      ListTile(
+        leading: const Icon(Icons.event_repeat_outlined),
+        title: const Text('Automatic backup'),
+        subtitle: Text(switch (_autoBackupFrequency) {
+          'daily' => 'Once a day when you open the app',
+          'weekly' => 'Once a week when you open the app',
+          _ => 'Off',
+        }),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: SegmentedButton<String>(
+          segments: [
+            for (var i = 0; i < Config.autoBackupFrequencies.length; i++)
+              ButtonSegment(
+                value: Config.autoBackupFrequencies[i],
+                label: Text(Config.autoBackupFrequencyLabels[i]),
+              ),
+          ],
+          selected: {_autoBackupFrequency},
+          onSelectionChanged: (selection) =>
+              _setAutoBackupFrequency(selection.first),
+        ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.history),
+        title: const Text('Last backup'),
+        subtitle: Text(_lastAutoBackup == null
+            ? 'No backup yet'
+            : formatTimerDateTime(_lastAutoBackup!)),
+      ),
+    ];
   }
 
   Future<void> _loadGoogleCalendarStatus() async {
@@ -2439,43 +2465,33 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
-  Future<void> _loadUpdateToken() async {
-    final set = await AppUpdates.readToken() != null;
-    if (!mounted) return;
-    setState(() => _updateTokenSet = set);
-  }
-
-  /// Settings → Updates → GitHub token: paste, replace or remove the
-  /// updater's token (secure storage), then the controller reads it again.
-  Future<void> _editUpdateToken() async {
-    final result = await showDialog<_UpdateTokenAction>(
-      context: context,
-      builder: (_) => _UpdateTokenDialog(hasToken: _updateTokenSet),
-    );
-    if (result == null || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await AppUpdates.saveToken(result.token);
-    } catch (e) {
-      messenger.showSnackBar(
-          SnackBar(content: Text('Could not save the token: $e')));
-      return;
-    }
-    if (!mounted) return;
-    setState(() => _updateTokenSet = result.token != null);
-    messenger.showSnackBar(SnackBar(
-        content: Text(result.token != null
-            ? 'GitHub token saved; checking for updates'
-            : 'GitHub token removed')));
-  }
-
-  Widget _buildUpdatesSection() {
+  /// Debugging (the same rows in every Mfficiency app): Send a report (to
+  /// Claude; a double tap on the menu's name/version does the same) and the
+  /// GitHub token that lets the app file it itself (ProblemReports, SPEC.md
+  /// §11).
+  Widget _buildDebuggingSection() {
     return _buildSection(
       index: 14,
+      title: 'Debugging',
+      children: [
+        ProblemReportSendTile(reporter: ProblemReports.instance),
+        ProblemReportSettingsTile(reporter: ProblemReports.instance),
+      ],
+    );
+  }
+
+  /// Updates (the same rows in every Mfficiency app): Check automatically,
+  /// Check for updates, GitHub token (read access, for a private repo; the
+  /// package's tile, kept under [AppUpdates.tokenKey]).
+  Widget _buildUpdatesSection() {
+    final updates = AppUpdates.controller;
+    return _buildSection(
+      index: 15,
       title: 'Updates',
       children: [
         SwitchListTile(
-          title: const Text('Automatically update'),
+          secondary: const Icon(Icons.update),
+          title: const Text('Check automatically'),
           subtitle: const Text(
               'Checks for a newer version every 15 minutes while the app is open '
               'and downloads it quietly in the background; once it is complete '
@@ -2485,23 +2501,17 @@ class _SettingsPageState extends State<SettingsPage> {
           value: _autoUpdateCheckEnabled,
           onChanged: _setAutoUpdateCheckEnabled,
         ),
-        // Checks now; a newer build downloads silently, then Android asks.
-        if (AppUpdates.controller case final updates?)
+        if (updates != null) ...[
+          // Checks now; a newer build downloads silently, then Android asks.
           UpdateCheckTile(controller: updates),
-        ListTile(
-          leading: const Icon(Icons.key),
-          title: const Text('GitHub token (optional)'),
-          subtitle: Text(_updateTokenSet
-              ? 'Saved on this phone (••••••••). Only needed if this '
-                  "app's repo is private."
-              : "Only needed if this app's repo is private."),
-          trailing: Text(_updateTokenSet ? 'Replace' : 'Add'),
-          onTap: _editUpdateToken,
-        ),
-        // Double tap on the name/version in the menu sends a report; this
-        // row holds the GitHub token that lets the app file it itself and
-        // explains how to get it (ProblemReports, SPEC.md §11).
-        ProblemReportSettingsTile(reporter: ProblemReports.instance),
+          UpdateTokenTile(
+            controller: updates,
+            repo: AppUpdates.githubRepo,
+            readToken: AppUpdates.readToken,
+            writeToken: AppUpdates.writeToken,
+            openUrl: ProblemReports.openUrl,
+          ),
+        ],
       ],
     );
   }
@@ -2951,6 +2961,63 @@ class _SettingsPageState extends State<SettingsPage> {
                               },
                             ),
                             SwitchListTile(
+                              title: const Text('Compact mode'),
+                              subtitle: const Text(
+                                  'Tighter spacing in lists, menus and every screen'),
+                              value: _compactMode,
+                              onChanged: (val) async {
+                                setState(() => _compactMode = val);
+                                Config.compactMode = val;
+                                await Config.save();
+                                MyApp.of(context)?.updateTheme();
+                                widget.onSettingsChanged?.call();
+                              },
+                            ),
+                            ListTile(
+                              title: const Text('Time format'),
+                              trailing: DropdownButton<bool>(
+                                value: _use24HourFormat,
+                                items: const [
+                                  DropdownMenuItem<bool>(
+                                    value: true,
+                                    child: Text('24-hour'),
+                                  ),
+                                  DropdownMenuItem<bool>(
+                                    value: false,
+                                    child: Text('12-hour (AM/PM)'),
+                                  ),
+                                ],
+                                onChanged: (val) async {
+                                  if (val == null) return;
+                                  setState(() => _use24HourFormat = val);
+                                  Config.use24HourFormat = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
+                            ),
+                            ListTile(
+                              title: const Text('Date format'),
+                              trailing: DropdownButton<String>(
+                                value: _dateFormat,
+                                items: Config.dateFormats
+                                    .map(
+                                      (f) => DropdownMenuItem<String>(
+                                        value: f,
+                                        child: Text(f.toLowerCase()),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (val) async {
+                                  if (val == null) return;
+                                  setState(() => _dateFormat = val);
+                                  Config.dateFormat = val;
+                                  await Config.save();
+                                  widget.onSettingsChanged?.call();
+                                },
+                              ),
+                            ),
+                            SwitchListTile(
                               title: const Text('Minimalist mode'),
                               subtitle: const Text(
                                   'Calm monochrome look: no colours, underlines '
@@ -2989,39 +3056,6 @@ class _SettingsPageState extends State<SettingsPage> {
                                 await Config.save();
                                 widget.onSettingsChanged?.call();
                               },
-                            ),
-                            SwitchListTile(
-                              title: const Text('24-hour time'),
-                              subtitle:
-                                  const Text('Turn off for 12-hour AM/PM time'),
-                              value: _use24HourFormat,
-                              onChanged: (val) async {
-                                setState(() => _use24HourFormat = val);
-                                Config.use24HourFormat = val;
-                                await Config.save();
-                                widget.onSettingsChanged?.call();
-                              },
-                            ),
-                            ListTile(
-                              title: const Text('Date format'),
-                              trailing: DropdownButton<String>(
-                                value: _dateFormat,
-                                items: Config.dateFormats
-                                    .map(
-                                      (f) => DropdownMenuItem<String>(
-                                        value: f,
-                                        child: Text(f.toLowerCase()),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (val) async {
-                                  if (val == null) return;
-                                  setState(() => _dateFormat = val);
-                                  Config.dateFormat = val;
-                                  await Config.save();
-                                  widget.onSettingsChanged?.call();
-                                },
-                              ),
                             ),
                           ],
                         ),
@@ -3390,6 +3424,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           _buildWeeklyHoursPlannerSection(),
                         _buildWishlistBuildSection(),
                         _buildClaudeRoutineSection(),
+                        _buildDebuggingSection(),
                         _buildUpdatesSection(),
                         _buildBackupSection(),
                         // Room so the last section can scroll to the top.
@@ -3442,93 +3477,5 @@ class _SettingsTabsHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _SettingsTabsHeaderDelegate oldDelegate) {
     return oldDelegate.height != height || oldDelegate.child != child;
-  }
-}
-
-/// What [_UpdateTokenDialog] returns: a token to save, or null to remove.
-class _UpdateTokenAction {
-  const _UpdateTokenAction(this.token);
-  final String? token;
-}
-
-/// Paste / replace / remove the updater's GitHub token. Owns its controller
-/// (disposing one right after `showDialog` returns breaks the exit
-/// animation). The saved value is never shown; the field starts empty.
-class _UpdateTokenDialog extends StatefulWidget {
-  const _UpdateTokenDialog({required this.hasToken});
-  final bool hasToken;
-
-  @override
-  State<_UpdateTokenDialog> createState() => _UpdateTokenDialogState();
-}
-
-class _UpdateTokenDialogState extends State<_UpdateTokenDialog> {
-  final TextEditingController _controller = TextEditingController();
-  bool _obscured = true;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final t = _controller.text.trim();
-    if (t.isEmpty) return;
-    Navigator.of(context).pop(_UpdateTokenAction(t));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('GitHub token (optional)'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Only needed if this app's repo is private. Create a "
-            'fine-grained token at github.com/settings/tokens with access to '
-            '${AppUpdates.githubRepo} only and "Contents" set to Read-only. '
-            'It is stored encrypted on this phone.',
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _controller,
-            obscureText: _obscured,
-            autocorrect: false,
-            enableSuggestions: false,
-            decoration: InputDecoration(
-              labelText: widget.hasToken
-                  ? 'New token (replaces the saved one)'
-                  : 'Token',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                tooltip: _obscured ? 'Show token' : 'Hide token',
-                icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setState(() => _obscured = !_obscured),
-              ),
-            ),
-            onSubmitted: (_) => _save(),
-          ),
-        ],
-      ),
-      actions: [
-        if (widget.hasToken)
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(const _UpdateTokenAction(null)),
-            child: const Text('Remove'),
-          ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Save'),
-        ),
-      ],
-    );
   }
 }

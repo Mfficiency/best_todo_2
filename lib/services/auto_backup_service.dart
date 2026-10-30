@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../config.dart';
 import '../models/item_event.dart';
 import 'alarm_storage_service.dart';
+import 'app_updates.dart';
 import 'item_event_journal.dart';
 import 'log_service.dart';
 import 'markdown_backup_service.dart';
@@ -76,6 +77,9 @@ class AutoBackupService {
   /// automatic backups are off. Returns the written file, or null when
   /// nothing was due or the write failed.
   static Future<File?> maybeRun({DateTime? now}) async {
+    // Android: the full backup (AppUpdates.backup) is the one automatic
+    // backup there; this one is retired (AppUpdates.fullBackupShown).
+    if (AppUpdates.fullBackupShown) return null;
     if (Config.autoBackupFrequency == 'off') return null;
     if (Config.autoBackupDirectory.isEmpty) return null;
     final moment = now ?? DateTime.now();

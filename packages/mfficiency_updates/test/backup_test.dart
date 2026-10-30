@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mfficiency_updates/mfficiency_updates.dart';
@@ -53,6 +54,7 @@ void main() {
   Future<FullBackup> make({
     Set<String> excluded = const {},
     Map<String, FullBackupExtra> extras = const {},
+    DateTime Function()? clock,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final b = FullBackup(
@@ -67,7 +69,7 @@ void main() {
         if (d.existsSync()) d.deleteSync(recursive: true);
         return (d..createSync(recursive: true)).path;
       },
-      clock: () => DateTime(2026, 10, 23, 18, 0, tick++),
+      clock: clock ?? () => DateTime(2026, 10, 23, 18, 0, tick++),
     );
     await b.init();
     return b;
@@ -187,5 +189,59 @@ void main() {
     final b = await make();
     await b.beforeUpdate(const UpdateResult(UpdateStatus.available, version: '2.0.0', build: 50), 'x.apk');
     expect(b.last.value?.reason, 'before-update');
+  });
+
+  test('automatic backups: weekly by default, daily, off; remembered', () async {
+    SharedPreferences.setMockInitialValues({});
+    var now = DateTime(2026, 10, 23, 18);
+    final b = await make(clock: () => now);
+    expect(b.schedule.value, FullBackupSchedule.weekly);
+
+    expect((await b.backupIfDue())?.reason, 'scheduled');
+    now = now.add(const Duration(days: 6));
+    expect(await b.backupIfDue(), isNull);
+    now = now.add(const Duration(days: 1));
+    expect(await b.backupIfDue(), isNotNull);
+
+    // Picking daily backs up at once when a day has passed.
+    now = now.add(const Duration(days: 1, minutes: 1));
+    await b.setSchedule(FullBackupSchedule.daily);
+    expect(b.last.value?.at, now);
+
+    await b.setSchedule(FullBackupSchedule.off);
+    now = now.add(const Duration(days: 30));
+    expect(await b.backupIfDue(), isNull);
+    expect((await make(clock: () => now)).schedule.value, FullBackupSchedule.off);
+  });
+
+  test('any backup counts for the schedule', () async {
+    SharedPreferences.setMockInitialValues({});
+    final now = DateTime(2026, 10, 23, 18);
+    final b = await make(clock: () => now);
+    await b.backupNow();
+    expect(await b.backupIfDue(), isNull);
+  });
+
+  testWidgets('FullBackupTiles: the five rows in order; schedule picks', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    late FullBackup b;
+    await tester.runAsync(() async => b = await make());
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ListView(children: [FullBackupTiles(backup: b)]))));
+    final keys = ['now', 'restore', 'location', 'schedule', 'last'];
+    final ys = [for (final k in keys) tester.getTopLeft(find.byKey(Key('fullBackup.$k'))).dy];
+    expect(ys, [...ys]..sort());
+    expect(find.text('Download/My App/Backups · kept when the app is uninstalled'), findsOneWidget);
+    expect(find.text('No backup yet'), findsOneWidget);
+    expect(find.text('Weekly'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('fullBackup.schedule')));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const Key('fullBackup.schedule.off')));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pumpAndSettle();
+    expect(b.schedule.value, FullBackupSchedule.off);
+    expect(find.text('Off'), findsOneWidget);
   });
 }

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.137] - 2026-10-30
+- Settings has the same layout as the other Mfficiency apps. Appearance starts with Dark mode, Compact mode (new: tighter spacing on every screen), Time format (24-hour or 12-hour, was the 24-hour time switch) and Date format. A new Debugging section, just above Updates, has Send a report (to Claude) and its GitHub token (moved from Updates). Updates: Check automatically (was Automatically update), Check for updates and GitHub token (the shared row: it saves as you paste and checks at once; a saved token keeps working). Backup & data: Back up everything, Restore from a backup, Backup location, Automatic backup (Off / Daily / Weekly; weekly unless you choose otherwise) and Last backup. On Android that is the one full backup in Download/BestToDo/Backups; the older folder backup (JSON + Markdown notes to a folder you picked) no longer runs there, and if you had it on daily or weekly the full backup takes that schedule. Its earlier files stay where they are and still restore through Sync & export → Import. On Windows the same rows drive the folder backup. Updates package 1.9.0.
+
 ## [0.2.136] - 2026-10-30
 - Other apps: at the very bottom of About, a new row opens a page with all the other Mfficiency apps (Best Music, BestCollage, BestFloory, Hally Remote, Vesta Immo, Best Watch, MostlyGoodNews). Each shows whether it is installed and its newest version, with Install, Update or Open: the download runs quietly in the background like an update, then Android asks once. The private apps need a GitHub token that can read them (the key icon on that page, or the Problem reports token if it also has Contents: Read-only); without one they open on GitHub. Updates package 1.8.0.
 

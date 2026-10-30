@@ -18,4 +18,5 @@ export 'src/release.dart';
 export 'src/remaining_time.dart';
 export 'src/store.dart';
 export 'src/strings.dart';
+export 'src/update_token_widgets.dart';
 export 'src/widgets.dart';

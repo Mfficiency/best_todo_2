@@ -104,6 +104,24 @@ ThemeData buildMinimalistTheme(Brightness brightness) {
   );
 }
 
+/// Settings → Appearance → Compact mode ([Config.compactMode]): tighter
+/// spacing on every screen through the theme alone (density, list tiles,
+/// app bar, inputs), so no screen needs its own change. Material keeps
+/// tap targets at 48 dp (`materialTapTargetSize` is left padded).
+ThemeData applyCompactMode(ThemeData theme, bool compact) {
+  if (!compact) return theme;
+  return theme.copyWith(
+    visualDensity: VisualDensity.compact,
+    materialTapTargetSize: MaterialTapTargetSize.padded,
+    appBarTheme: theme.appBarTheme.copyWith(toolbarHeight: 52),
+    listTileTheme: theme.listTileTheme.copyWith(
+      visualDensity: VisualDensity.compact,
+      minVerticalPadding: 4,
+    ),
+    inputDecorationTheme: theme.inputDecorationTheme.copyWith(isDense: true),
+  );
+}
+
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Background entry point invoked by a home-screen widget when a toggle is
@@ -171,6 +189,9 @@ Future<void> main() async {
   // restore after the first frame.
   await _initStep('backup', AppUpdates.createBackup);
   await _initStep('config', Config.load);
+  // The folder backup's schedule moves to the full backup's (one automatic
+  // backup on Android, see AppUpdates.adoptFolderBackupSchedule).
+  await _initStep('backup schedule', AppUpdates.adoptFolderBackupSchedule);
   await _initStep('notifications', NotificationService.initialize);
   if (!kIsWeb) {
     await _initStep('sms report scheduler', SmsReportScheduler.applyFromConfig);
@@ -295,6 +316,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       AppUpdates.start(context);
       // A new install asks once whether to restore a full backup.
       unawaited(AppUpdates.backup?.offerRestore(context));
+      // Settings → Backup & data → Automatic backup (off/daily/weekly):
+      // a due backup now and whenever the app comes back.
+      AppUpdates.backup?.startSchedule();
     });
   }
 
@@ -544,22 +568,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 ),
         );
       },
-      theme: Config.minimalistMode
-          ? buildMinimalistTheme(Brightness.light)
-          : ThemeData(
-              colorScheme: ColorScheme.fromSeed(seedColor: _seedColor)
-                  .copyWith(primary: _seedColor),
-              useMaterial3: true,
-            ),
-      darkTheme: Config.minimalistMode
-          ? buildMinimalistTheme(Brightness.dark)
-          : ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: _seedColor,
-                brightness: Brightness.dark,
-              ).copyWith(primary: _seedColor),
-              useMaterial3: true,
-            ),
+      theme: applyCompactMode(
+        Config.minimalistMode
+            ? buildMinimalistTheme(Brightness.light)
+            : ThemeData(
+                colorScheme: ColorScheme.fromSeed(seedColor: _seedColor)
+                    .copyWith(primary: _seedColor),
+                useMaterial3: true,
+              ),
+        Config.compactMode,
+      ),
+      darkTheme: applyCompactMode(
+        Config.minimalistMode
+            ? buildMinimalistTheme(Brightness.dark)
+            : ThemeData(
+                colorScheme: ColorScheme.fromSeed(
+                  seedColor: _seedColor,
+                  brightness: Brightness.dark,
+                ).copyWith(primary: _seedColor),
+                useMaterial3: true,
+              ),
+        Config.compactMode,
+      ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
       home: _showWebDataChoice
           ? WebDataChoicePage(

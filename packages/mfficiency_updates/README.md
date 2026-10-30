@@ -141,7 +141,11 @@ permission; Android 9 and older: the storage permission, `maxSdkVersion 28`).
 - **Not in it:** secrets kept natively (Android Keystore, secure storage),
   caches, `excluded` paths, `excludedPrefixes` keys, the update state.
 - **When:** `beforeInstall: backup.beforeUpdate` makes one before every
-  update; "Back up everything" in Settings (`FullBackupTiles`) any time.
+  update; "Back up everything" in Settings any time; and automatically
+  (`schedule`: off, daily, weekly — `defaultSchedule`, weekly unless the
+  app says otherwise): `startSchedule()` after the first frame backs up
+  when the newest backup of any kind is older than that, then again on
+  every return to the foreground.
   The newest `keep` (10) of this install's files are kept.
 - **Restore:** "Restore from a backup" (or the one-time offer on a new
   install, `offerRestore`) picks a file with Android's picker, checks it is
@@ -328,3 +332,15 @@ default HTTP's User-Agent and headers and the downloader against a local
 server (Range resume, If-Range, 416), the legacy migration and the vendoring
 check. Changes: CHANGELOG.md. Dart 3.0 compatible
 (the lowest constraint of the apps).
+
+## Settings rows (the same in every app)
+
+Every Mfficiency app shows these rows in this order (docs/CONCEPT.md §5 in
+the template); each is a plain `ListTile` widget the app puts into its own
+settings list, with its strings:
+
+| Section | Rows |
+|---|---|
+| Debugging | `ProblemReportSendTile` (Send a report) · `ProblemReportSettingsTile` (GitHub token) |
+| Updates | the app's "check automatically" switch · `UpdateCheckTile` · `UpdateTokenTile` (GitHub token: `readToken`/`writeToken`, then `controller.reloadToken()`; pair it with `UpdateConfig.tokenProvider`) |
+| Backup & data | `FullBackupNowTile` · `FullBackupRestoreTile` · `FullBackupLocationTile` · `FullBackupScheduleTile` (Off/Daily/Weekly) · `FullBackupLastTile` — or `FullBackupTiles`, all five in that order |
