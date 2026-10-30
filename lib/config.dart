@@ -390,6 +390,11 @@ class Config {
   /// their 48 dp minimum.
   static bool compactMode = false;
 
+  /// If true (Settings → Releases → What's new after an update, on by
+  /// default), the first start after an update shows the changelog entries
+  /// since the version the user had before, once (`maybeShowWhatsNew`).
+  static bool whatsNewEnabled = true;
+
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
 
@@ -740,6 +745,7 @@ class Config {
       'showFailureDotOnMenu': showFailureDotOnMenu,
       'minimalistMode': minimalistMode,
       'compactMode': compactMode,
+      'whatsNewEnabled': whatsNewEnabled,
       'enableNotifications': enableNotifications,
       'wishlistSyncBannerDismissed': wishlistSyncBannerDismissed,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
@@ -816,6 +822,7 @@ class Config {
     showFailureDotOnMenu = data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
     compactMode = data['compactMode'] ?? compactMode;
+    whatsNewEnabled = data['whatsNewEnabled'] ?? whatsNewEnabled;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
     wishlistSyncBannerDismissed =
         data['wishlistSyncBannerDismissed'] ?? wishlistSyncBannerDismissed;

@@ -59,7 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _tabsHeaderKey = GlobalKey();
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(
-    17,
+    18,
     (_) => GlobalKey(),
   );
   final List<String> _sectionTitles = const [
@@ -77,6 +77,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'Weekly Hours Planner',
     'Wishlist build',
     'Claude Routine',
+    // Releases sits just above the standard three, as in the template.
+    'Releases',
     // The last three are the same in every Mfficiency app, in this order.
     'Debugging',
     'Updates',
@@ -222,28 +224,30 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsSearchEntry('Export Settings', 10, 'backup save json'),
     _SettingsSearchEntry('Export Everything', 10, 'backup save json'),
     _SettingsSearchEntry('Import', 10, 'restore backup load json'),
-    _SettingsSearchEntry('Back up everything', 16,
+    _SettingsSearchEntry('Back up everything', 17,
         'full backup now downloads update uninstall reinstall all data'),
-    _SettingsSearchEntry('Restore from a backup', 16,
+    _SettingsSearchEntry('Restore from a backup', 17,
         'full backup downloads import reinstall all data'),
-    _SettingsSearchEntry('Backup location', 16,
+    _SettingsSearchEntry('Backup location', 17,
         'folder directory downloads path choose where'),
-    _SettingsSearchEntry('Automatic backup', 16,
+    _SettingsSearchEntry('Automatic backup', 17,
         'daily weekly schedule save everything off'),
-    _SettingsSearchEntry('Last backup', 16, 'when backed up date time'),
+    _SettingsSearchEntry('Last backup', 17, 'when backed up date time'),
     _SettingsSearchEntry(
         'Enable Todoist sync', 9, 'two-way api key token integration'),
     _SettingsSearchEntry('Todoist API token', 9, 'key integration secret'),
     _SettingsSearchEntry('Sync with Todoist now', 9, 'manual run two-way'),
-    _SettingsSearchEntry('Send a report', 14,
+    _SettingsSearchEntry("Show what's new after an update", 14,
+        'changelog whats new release notes update popup sheet'),
+    _SettingsSearchEntry('Send a report', 15,
         'bug problem report claude issue logs fix debugging'),
-    _SettingsSearchEntry('GitHub token', 14,
-        'problem report claude issue key secret debugging'),
-    _SettingsSearchEntry('Check automatically', 15,
-        'auto update version release new build startup prompt install about'),
-    _SettingsSearchEntry('Check for updates', 15,
-        'update version release new build download install now'),
     _SettingsSearchEntry('GitHub token', 15,
+        'problem report claude issue key secret debugging'),
+    _SettingsSearchEntry('Check automatically', 16,
+        'auto update version release new build startup prompt install about'),
+    _SettingsSearchEntry('Check for updates', 16,
+        'update version release new build download install now'),
+    _SettingsSearchEntry('GitHub token', 16,
         'update private repository key secret access'),
     _SettingsSearchEntry('Filtering rules', 2,
         'view home wishlist approval waiting for approval projects archived '
@@ -278,6 +282,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _darkMode = Config.darkMode;
   bool _minimalistMode = Config.minimalistMode;
   bool _compactMode = Config.compactMode;
+  bool _whatsNewEnabled = Config.whatsNewEnabled;
   bool _useIconTabs = Config.useIconTabs;
   bool _showFailureDotOnMenu = Config.showFailureDotOnMenu;
   bool _showWidgetProgressLine = Config.showWidgetProgressLine;
@@ -360,6 +365,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _darkMode = Config.darkMode;
     _minimalistMode = Config.minimalistMode;
     _compactMode = Config.compactMode;
+    _whatsNewEnabled = Config.whatsNewEnabled;
     _useIconTabs = Config.useIconTabs;
     _showFailureDotOnMenu = Config.showFailureDotOnMenu;
     _showWidgetProgressLine = Config.showWidgetProgressLine;
@@ -1710,7 +1716,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildBackupSection() {
     final backup = AppUpdates.backup;
     return _buildSection(
-      index: 16,
+      index: 17,
       title: 'Backup & data',
       children: [
         if (backup != null && AppUpdates.fullBackupShown)
@@ -2465,13 +2471,35 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.onSettingsChanged?.call();
   }
 
-  /// Debugging (the same rows in every Mfficiency app): Send a report (to
-  /// Claude; a double tap on the menu's name/version does the same) and the
-  /// GitHub token that lets the app file it itself (ProblemReports, SPEC.md
-  /// §11).
-  Widget _buildDebuggingSection() {
+  /// Releases: whether the first start after an update shows what's new
+  /// (the changelog entries since the version before, once; [WhatsNew]).
+  Widget _buildReleasesSection() {
     return _buildSection(
       index: 14,
+      title: 'Releases',
+      children: [
+        SwitchListTile(
+          secondary: const Icon(Icons.new_releases_outlined),
+          title: const Text("Show what's new after an update"),
+          value: _whatsNewEnabled,
+          onChanged: (value) async {
+            setState(() => _whatsNewEnabled = value);
+            Config.whatsNewEnabled = value;
+            await Config.save();
+            widget.onSettingsChanged?.call();
+          },
+        ),
+      ],
+    );
+  }
+
+  /// Debugging (the same rows in every Mfficiency app, and only those):
+  /// Send a report (to Claude; a double tap on the menu's name/version does
+  /// the same) and the GitHub token that lets the app file it itself
+  /// (ProblemReports, SPEC.md §11).
+  Widget _buildDebuggingSection() {
+    return _buildSection(
+      index: 15,
       title: 'Debugging',
       children: [
         ProblemReportSendTile(reporter: ProblemReports.instance),
@@ -2486,7 +2514,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildUpdatesSection() {
     final updates = AppUpdates.controller;
     return _buildSection(
-      index: 15,
+      index: 16,
       title: 'Updates',
       children: [
         SwitchListTile(
@@ -3424,6 +3452,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           _buildWeeklyHoursPlannerSection(),
                         _buildWishlistBuildSection(),
                         _buildClaudeRoutineSection(),
+                        _buildReleasesSection(),
                         _buildDebuggingSection(),
                         _buildUpdatesSection(),
                         _buildBackupSection(),

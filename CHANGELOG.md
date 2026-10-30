@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.138] - 2026-10-30
+- What's new: after an update, a small sheet lists the changes since the version you had before, once. Settings → Releases (a new section, just above Debugging) turns it off; it is on by default.
+- Every GitHub token dialog (Debugging, Updates, About → Other apps) works the same: the token field at the top (show it, copy it), one short line below, the full steps folded under "How to get a token", and Close always visible. The rows just say Token set or No token. Updates package 1.10.0.
+
 ## [0.2.137] - 2026-10-30
 - Settings has the same layout as the other Mfficiency apps. Appearance starts with Dark mode, Compact mode (new: tighter spacing on every screen), Time format (24-hour or 12-hour, was the 24-hour time switch) and Date format. A new Debugging section, just above Updates, has Send a report (to Claude) and its GitHub token (moved from Updates). Updates: Check automatically (was Automatically update), Check for updates and GitHub token (the shared row: it saves as you paste and checks at once; a saved token keeps working). Backup & data: Back up everything, Restore from a backup, Backup location, Automatic backup (Off / Daily / Weekly; weekly unless you choose otherwise) and Last backup. On Android that is the one full backup in Download/BestToDo/Backups; the older folder backup (JSON + Markdown notes to a folder you picked) no longer runs there, and if you had it on daily or weekly the full backup takes that schedule. Its earlier files stay where they are and still restore through Sync & export → Import. On Windows the same rows drive the folder backup. Updates package 1.9.0.
 

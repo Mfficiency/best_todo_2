@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10.0 - 2026-10-30
+
+- **One GitHub token dialog** (`GithubTokenDialog`, `GithubTokenStrings`)
+  for problem reports, updates and other apps: the field first with show
+  and copy buttons, one short line (`summary`) under it, the full steps
+  folded under "How to get a token"; Close always visible; saved as typed.
+- Token rows say only "Token set" / "No token".
+- Breaking: `ProblemReportStrings` and `OtherAppsStrings` lose
+  `createToken`, `removeToken` and `close` (now in `tokenDialog`) and gain
+  `setupSummary` / `tokenSummary`; `UpdateTokenStrings` loses
+  `createToken`, `removeToken`, `close` (now `dialog`) and its `summary`
+  takes the repo.
+
 ## 1.9.0 - 2026-10-30
 
 - **The same settings rows in every app** (README.md › Settings rows):

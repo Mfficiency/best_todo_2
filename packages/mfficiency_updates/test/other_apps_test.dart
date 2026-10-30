@@ -293,9 +293,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('GitHub token'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('githubToken.howTo')));
+      await tester.pumpAndSettle();
       expect(find.textContaining('Contents: "Read-only"'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('otherApps.token')), 'tok');
-      await tester.tap(find.text('Close'));
+      await tester.tap(find.byKey(const Key('githubToken.close')));
       await tester.pumpAndSettle();
       expect(token, 'tok');
       expect(http.requests.last.$2['Authorization'], 'Bearer tok',

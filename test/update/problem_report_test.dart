@@ -103,7 +103,7 @@ void main() {
     expect(find.byKey(const Key('problemReport.logs')), findsOneWidget);
   });
 
-  testWidgets('Settings › Debugging explains the problem-report token',
+  testWidgets('Settings › Debugging token dialog: the field, the steps folded away',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
     for (var i = 0; i < 60; i++) {
@@ -125,6 +125,12 @@ void main() {
     await tester.tap(tile);
     await tester.pumpAndSettle();
 
+    // The field first, close always there; the steps are folded away.
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byKey(const Key('githubToken.close')), findsOneWidget);
+    expect(find.textContaining('Issues: "Read and write"'), findsNothing);
+    await tester.tap(find.byKey(const Key('githubToken.howTo')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('Issues: "Read and write"'), findsOneWidget);
     expect(find.textContaining('CLAUDE_CODE_OAUTH_TOKEN'), findsWidgets);
   });

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mfficiency_updates/mfficiency_updates.dart';
 
@@ -213,36 +214,61 @@ void main() {
       expect(find.text('Report a problem to Claude'), findsOneWidget);
     });
 
-    testWidgets('settings: explanation, token saved as typed, removable', (
+    testWidgets('settings: field first, help folded, copy, Token set', (
       tester,
     ) async {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
       final r = reporter();
       await tester.pumpWidget(host(r));
       await tester.pumpAndSettle();
-      expect(find.textContaining('No token'), findsOneWidget);
+      expect(find.text('No token'), findsOneWidget);
       await tester.tap(find.byKey(const Key('problemReport.settings')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Issues: "Read and write"'), findsOneWidget);
-      expect(find.textContaining('CLAUDE_CODE_OAUTH_TOKEN'), findsOneWidget);
-      await tester.ensureVisible(
-        find.byKey(const Key('problemReport.createToken')),
-      );
-      await tester.tap(find.byKey(const Key('problemReport.createToken')));
-      expect(opened.single, ProblemReportConfig.tokenPage);
-      await tester.enterText(
-          find.byKey(const Key('problemReport.token')), 'ghp_new');
-      await tester.pumpAndSettle();
+      // The field, then one line; the steps only after "How to get a token".
+      final field = find.byKey(const Key('problemReport.token'));
+      expect(tester.getTopLeft(field).dy,
+          lessThan(tester.getTopLeft(find.textContaining('Sends reports')).dy));
+      expect(find.textContaining('CLAUDE_CODE_OAUTH_TOKEN'), findsNothing);
+      await tester.enterText(field, 'ghp_new');
+      await tester.pump(const Duration(seconds: 1));
       expect(token, 'ghp_new');
-      await tester.tap(find.text('Close'));
+      await tester.tap(find.byKey(const Key('githubToken.copy')));
+      await tester.pump();
+      expect(copied, ['ghp_new']);
+      await tester.pump(const Duration(seconds: 3));
+
+      await tester.tap(find.byKey(const Key('githubToken.howTo')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('GitHub token set'), findsOneWidget);
+      expect(find.textContaining('CLAUDE_CODE_OAUTH_TOKEN'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('githubToken.create')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('githubToken.create')));
+      expect(opened.single, ProblemReportConfig.tokenPage);
+      // The steps scroll; Close stays on screen.
+      final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+      final close = tester.getRect(find.byKey(const Key('githubToken.close')));
+      expect(close.top, greaterThanOrEqualTo(0));
+      expect(close.bottom, lessThanOrEqualTo(screen.height));
+      await tester.tap(find.byKey(const Key('githubToken.close')));
+      await tester.pumpAndSettle();
+      expect(find.text('Token set'), findsOneWidget);
+
+      // Reopened: the saved token is in the field, ready to copy again.
       await tester.tap(find.byKey(const Key('problemReport.settings')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Remove token'));
-      await tester.tap(find.text('Close'));
+      expect(tester.widget<TextField>(field).controller!.text, 'ghp_new');
+      await tester.tap(find.byKey(const Key('githubToken.remove')));
+      await tester.tap(find.byKey(const Key('githubToken.close')));
       await tester.pumpAndSettle();
       expect(token, isNull);
-      expect(find.textContaining('No token'), findsOneWidget);
+      expect(find.text('No token'), findsOneWidget);
     });
   });
 }

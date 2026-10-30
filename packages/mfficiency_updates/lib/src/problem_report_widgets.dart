@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'github_token_dialog.dart';
 import 'problem_report.dart';
 
 /// Every text of the problem report, English by default.
@@ -30,17 +31,15 @@ class ProblemReportStrings {
         'again.',
     this.notConfigured = 'Problem reports aren\'t set up for this app.',
     this.sendTitle = 'Send a report',
-    this.sendSubtitle = 'Describe a problem; Claude fixes it and the fix arrives as an update',
+    this.sendSubtitle = 'Describe a problem for Claude to fix',
     this.settingsTitle = 'GitHub token',
-    this.settingsTokenSet = 'GitHub token set: reports go straight to Claude',
-    this.settingsNoToken =
-        'No token: reports open GitHub in the browser. Tap to set up',
-    this.setupTitle = 'Problem reports to Claude',
+    this.settingsTokenSet = 'Token set',
+    this.settingsNoToken = 'No token',
+    this.setupTitle = 'GitHub token',
+    this.setupSummary = _setupSummary,
     this.setupHelp = _setupHelp,
-    this.tokenLabel = 'GitHub token (Issues: Read and write)',
-    this.createToken = 'Create a token on GitHub',
-    this.removeToken = 'Remove token',
-    this.close = 'Close',
+    this.tokenLabel = 'GitHub token',
+    this.tokenDialog = const GithubTokenStrings(),
   });
 
   final String title;
@@ -63,12 +62,13 @@ class ProblemReportStrings {
   final String settingsNoToken;
   final String setupTitle;
 
-  /// The steps to get the token, for the repo ("owner/repo").
+  /// One line under the field, for the repo ("owner/repo").
+  final String Function(String repo) setupSummary;
+
+  /// The steps to get the token, for the repo, folded away at first.
   final String Function(String repo) setupHelp;
   final String tokenLabel;
-  final String createToken;
-  final String removeToken;
-  final String close;
+  final GithubTokenStrings tokenDialog;
 
   static String _logLines(int lines) => lines == 1 ? '1 line' : '$lines lines';
   static String _viaToken(String repo) =>
@@ -76,13 +76,16 @@ class ProblemReportStrings {
   static String _sent(int? number) => number == null
       ? 'Sent. Claude is on it; the fix comes as an update.'
       : 'Sent as issue #$number. Claude is on it; the fix comes as an update.';
+  static String _setupSummary(String repo) =>
+      'Sends reports as issues in $repo (Issues: Read and write). Without '
+      'one, reports open GitHub in the browser.';
   static String _setupHelp(String repo) =>
       'Double-tap the version in the menu to report a problem. The report '
       '(your description and the app\'s logs) becomes an issue in $repo on '
       'GitHub. Claude reads it, fixes the code, merges the fix into dev and '
       'the next update brings it.\n'
       '\n'
-      'To send reports straight from the app, paste a GitHub token below:\n'
+      'To send reports straight from the app, paste a GitHub token above:\n'
       '1. Tap "Create a token on GitHub" (or GitHub › Settings › Developer '
       'settings › Personal access tokens › Fine-grained tokens › Generate new '
       'token).\n'
@@ -374,9 +377,8 @@ class ProblemReportSettingsTile extends StatelessWidget {
       );
 }
 
-/// The steps to get a token and its field. No Save button: the token is
-/// saved as it is pasted or typed.
-class ProblemReportSetupDialog extends StatefulWidget {
+/// The token dialog of problem reports ([GithubTokenDialog]).
+class ProblemReportSetupDialog extends StatelessWidget {
   const ProblemReportSetupDialog({
     super.key,
     required this.reporter,
@@ -387,92 +389,19 @@ class ProblemReportSetupDialog extends StatefulWidget {
   final ProblemReportStrings strings;
 
   @override
-  State<ProblemReportSetupDialog> createState() =>
-      _ProblemReportSetupDialogState();
-}
-
-class _ProblemReportSetupDialogState extends State<ProblemReportSetupDialog> {
-  final _token = TextEditingController();
-  var _hasToken = false;
-  Future<void> _saving = Future.value();
-
-  @override
-  void initState() {
-    super.initState();
-    widget.reporter.token().then((t) {
-      if (!mounted || t == null) return;
-      setState(() {
-        _hasToken = true;
-        _token.text = t;
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _token.dispose();
-    super.dispose();
-  }
-
-  void _save(String value) {
-    // One write at a time, in order.
-    _saving = _saving.then((_) => widget.reporter.setToken(value));
-    setState(() => _hasToken = value.trim().isNotEmpty);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final s = widget.strings;
-    final repo = widget.reporter.config.githubRepo;
-    return AlertDialog(
-      title: Text(s.setupTitle),
-      scrollable: true,
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SelectableText(s.setupHelp(repo)),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            key: const Key('problemReport.createToken'),
-            onPressed: () =>
-                widget.reporter.openUrl(ProblemReportConfig.tokenPage),
-            icon: const Icon(Icons.open_in_new),
-            label: Text(s.createToken),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            key: const Key('problemReport.token'),
-            controller: _token,
-            obscureText: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            onChanged: _save,
-            decoration: InputDecoration(
-              labelText: s.tokenLabel,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        if (_hasToken)
-          TextButton(
-            onPressed: () {
-              _token.clear();
-              _save('');
-            },
-            child: Text(s.removeToken),
-          ),
-        TextButton(
-          onPressed: () async {
-            final nav = Navigator.of(context);
-            await _saving;
-            nav.pop();
-          },
-          child: Text(s.close),
-        ),
-      ],
+    final repo = reporter.config.githubRepo;
+    return GithubTokenDialog(
+      title: strings.setupTitle,
+      label: strings.tokenLabel,
+      summary: strings.setupSummary(repo),
+      help: strings.setupHelp(repo),
+      readToken: reporter.token,
+      writeToken: reporter.setToken,
+      openUrl: reporter.openUrl,
+      tokenPage: ProblemReportConfig.tokenPage,
+      fieldKey: const Key('problemReport.token'),
+      strings: strings.tokenDialog,
     );
   }
 }

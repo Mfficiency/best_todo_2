@@ -1468,18 +1468,27 @@ tag" note.
 **Section order and frame (0.2.118, the layout shared by every Mfficiency app, Vesta Immo's
 Settings page):** Appearance, Mode & features, Filtering rules, Notifications, Tasks, Streak,
 Dice timer, SMS report, Widget, Todoist sync, Sync & export, Weekly Hours Planner, Wishlist
-build, Claude Routine, **Debugging** (0.2.137), **Updates** and **Backup & data** (last; it
-was "Backup"). The first rows of Appearance, Debugging, Updates and Backup & data are the
-same in every Mfficiency app (flutter_app_template docs/CONCEPT.md §5, package 1.9.0;
+build, Claude Routine, **Releases** (0.2.138), **Debugging** (0.2.137), **Updates** and
+**Backup & data** (last; it was "Backup"). The first rows of Appearance, and all rows of
+Debugging, Updates and Backup & data (nothing else goes there since 0.2.138), are the
+same in every Mfficiency app (flutter_app_template docs/CONCEPT.md §5, package 1.10.0;
 `settings_layout_test.dart` pins them): Appearance › Dark mode, Compact mode, Time format,
 Date format, then Minimalist mode, Use tab icons, Red dot for failed tests; Debugging ›
 Send a report (`ProblemReportSendTile`), GitHub token (`ProblemReportSettingsTile`);
 Updates › Check automatically, Check for updates (`UpdateCheckTile`), GitHub token
 (`UpdateTokenTile`); Backup & data › Back up everything, Restore from a backup, Backup
 location, Automatic backup, Last backup (`FullBackupTiles` on Android, see §2 Automatic
-backup). The order of `_sectionTitles` is the page order: section indexes, the search
-registry, the visibility switch, the chip row and the scroll tracking all go by it, so a new
-section is inserted before Updates and the indexes after it shift. Cards have a 4 px gap
+backup). Releases › Show what's new after an update (`Config.whatsNewEnabled`, on by
+default): the first start of a new version shows, once, a sheet with the changelog entries
+since the version the user had before (`lib/ui/whats_new_sheet.dart`, `WhatsNew`: the last
+version in the prefs key `whats_new.last_version`, for installs from before 0.2.138 the data
+files' `last_run_version.txt`; worked out after the first frame, shown once the intro or a
+first-start picker is closed; a fresh install shows nothing). The GitHub token rows say only
+"Token set" / "No token"; their dialog (the package's `GithubTokenDialog`, also on About ›
+Other apps) has the field first with show/copy, one short line, the steps folded under "How to
+get a token", and Close. The order of `_sectionTitles` is the page order: section indexes, the
+search registry, the visibility switch, the chip row and the scroll tracking all go by it, so a
+new section is inserted before Releases and the indexes after it shift. Cards have a 4 px gap
 (`margin: bottom 4`), end with `SizedBox(height: 8)` when open, the pinned chip header is 64
 high (padding 12/10), the content is centred at most 820 wide (`_contentMaxWidth`, through
 the `SliverPadding`'s side padding so the list stays lazy) and ends with `SizedBox(height:

@@ -20,6 +20,7 @@ import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
 import 'ui/web_approvals_site.dart';
 import 'ui/web_data_choice_page.dart';
+import 'ui/whats_new_sheet.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
 import 'services/alarm_ids.dart';
@@ -310,8 +311,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (!start && AppUpdates.promptAllowed.value == !busy) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AppUpdates.promptAllowed.value = !busy;
-      if (!start) return;
       final context = appNavigatorKey.currentContext;
+      // What's new after an update (Settings → Releases): worked out right
+      // away, shown once the intro or a first-start picker is closed.
+      if (start) unawaited(WhatsNew.prepare());
+      if (!busy && context != null) unawaited(WhatsNew.show(context));
+      if (!start) return;
       if (context == null) return;
       AppUpdates.start(context);
       // A new install asks once whether to restore a full backup.
