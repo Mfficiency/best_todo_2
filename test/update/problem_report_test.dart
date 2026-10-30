@@ -103,7 +103,7 @@ void main() {
     expect(find.byKey(const Key('problemReport.logs')), findsOneWidget);
   });
 
-  testWidgets('Settings › Updates explains the problem-report token',
+  testWidgets('Settings › Debugging explains the problem-report token',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
     for (var i = 0; i < 60; i++) {
@@ -111,14 +111,14 @@ void main() {
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
       await tester.pump();
     }
-    final header = find.byTooltip('Expand Updates');
+    final header = find.byTooltip('Expand Debugging');
     await tester.scrollUntilVisible(header, 80,
         scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     await tester.tap(header);
     await tester.pumpAndSettle();
 
-    final tile = find.text('Problem reports to Claude');
+    final tile = find.byKey(const Key('problemReport.settings'));
     await tester.scrollUntilVisible(tile, 80,
         scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();

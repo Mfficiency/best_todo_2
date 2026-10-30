@@ -18,18 +18,20 @@ class ProblemReportStrings {
     this.viaToken = _viaToken,
     this.viaBrowser =
         'No GitHub token set: Send opens GitHub in the browser with the '
-            'report filled in (logs shortened). Settings › Problem reports '
+            'report filled in (logs shortened). Settings › Debugging › GitHub token '
             'sends it straight from the app.',
     this.sent = _sent,
     this.openedInBrowser =
         'Opened on GitHub: tap "Create" there to hand it to Claude.',
     this.badToken =
         'GitHub refused the token. It needs "Issues: Read and write" on '
-            'this app\'s repository (Settings › Problem reports).',
+            'this app\'s repository (Settings › Debugging › GitHub token).',
     this.failed = 'Couldn\'t send the report. Check the connection and try '
         'again.',
     this.notConfigured = 'Problem reports aren\'t set up for this app.',
-    this.settingsTitle = 'Problem reports to Claude',
+    this.sendTitle = 'Send a report',
+    this.sendSubtitle = 'Describe a problem; Claude fixes it and the fix arrives as an update',
+    this.settingsTitle = 'GitHub token',
     this.settingsTokenSet = 'GitHub token set: reports go straight to Claude',
     this.settingsNoToken =
         'No token: reports open GitHub in the browser. Tap to set up',
@@ -54,6 +56,8 @@ class ProblemReportStrings {
   final String badToken;
   final String failed;
   final String notConfigured;
+  final String sendTitle;
+  final String sendSubtitle;
   final String settingsTitle;
   final String settingsTokenSet;
   final String settingsNoToken;
@@ -312,8 +316,30 @@ class _ProblemReportSheetState extends State<ProblemReportSheet> {
   }
 }
 
-/// Settings row: whether a token is set; a tap opens the explanation and
-/// the token field.
+/// Settings row "Send a report" (Debugging, first): opens the report sheet,
+/// the same one as a double tap on the version in the menu.
+class ProblemReportSendTile extends StatelessWidget {
+  const ProblemReportSendTile({
+    super.key,
+    required this.reporter,
+    this.strings = const ProblemReportStrings(),
+  });
+
+  final ProblemReporter reporter;
+  final ProblemReportStrings strings;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        key: const Key('problemReport.send'),
+        leading: const Icon(Icons.bug_report_outlined),
+        title: Text(strings.sendTitle),
+        subtitle: Text(strings.sendSubtitle),
+        onTap: () => showProblemReport(context, reporter, strings: strings),
+      );
+}
+
+/// Settings row "GitHub token" (Debugging, after "Send a report"): whether
+/// a token is set; a tap opens the explanation and the token field.
 class ProblemReportSettingsTile extends StatelessWidget {
   const ProblemReportSettingsTile({
     super.key,
@@ -331,7 +357,7 @@ class ProblemReportSettingsTile extends StatelessWidget {
           future: reporter.token(),
           builder: (context, snap) => ListTile(
             key: const Key('problemReport.settings'),
-            leading: const Icon(Icons.bug_report_outlined),
+            leading: const Icon(Icons.key_outlined),
             title: Text(strings.settingsTitle),
             subtitle: Text(
               snap.data == null

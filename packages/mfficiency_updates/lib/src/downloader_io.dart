@@ -56,9 +56,11 @@ class IoApkDownloader extends ApkDownloader {
       dir.createSync(recursive: true);
       final part = File('${dir.path}/$fileName.part');
       final meta = File('${dir.path}/$fileName.part.meta');
-      // Only this file's partial download stays; other builds' go.
+      // Only this file's partial download stays; other builds' go. By name:
+      // listSync's paths use the platform separator ("\\" on Windows).
+      final keep = {'$fileName.part', '$fileName.part.meta'};
       for (final f in dir.listSync()) {
-        if (f.path != part.path && f.path != meta.path) {
+        if (!keep.contains(f.path.split(RegExp(r'[\\/]')).last)) {
           f.deleteSync(recursive: true);
         }
       }

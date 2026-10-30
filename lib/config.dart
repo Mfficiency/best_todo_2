@@ -384,6 +384,12 @@ class Config {
   /// filled highlights. Combines with [darkMode] for a dark monochrome look.
   static bool minimalistMode = false;
 
+  /// If true (Settings → Appearance → Compact mode), spacing is tighter on
+  /// every screen through the theme (`applyCompactMode` in main.dart):
+  /// denser lists, buttons, inputs and a lower app bar. Touch targets keep
+  /// their 48 dp minimum.
+  static bool compactMode = false;
+
   /// If true, notifications are enabled.
   static bool enableNotifications = false;
 
@@ -733,6 +739,7 @@ class Config {
       'darkMode': darkMode,
       'showFailureDotOnMenu': showFailureDotOnMenu,
       'minimalistMode': minimalistMode,
+      'compactMode': compactMode,
       'enableNotifications': enableNotifications,
       'wishlistSyncBannerDismissed': wishlistSyncBannerDismissed,
       'defaultNotificationDelaySeconds': defaultNotificationDelaySeconds,
@@ -808,6 +815,7 @@ class Config {
     darkMode = data['darkMode'] ?? darkMode;
     showFailureDotOnMenu = data['showFailureDotOnMenu'] ?? showFailureDotOnMenu;
     minimalistMode = data['minimalistMode'] ?? minimalistMode;
+    compactMode = data['compactMode'] ?? compactMode;
     enableNotifications = data['enableNotifications'] ?? enableNotifications;
     wishlistSyncBannerDismissed =
         data['wishlistSyncBannerDismissed'] ?? wishlistSyncBannerDismissed;

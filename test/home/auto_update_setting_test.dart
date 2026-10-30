@@ -57,8 +57,8 @@ void main() {
     await pumpSettings(tester);
     await openSection(tester, 'Updates');
 
-    expect(find.text('Automatically update'), findsOneWidget);
-    await tester.tap(find.text('Automatically update'));
+    expect(find.text('Check automatically'), findsOneWidget);
+    await tester.tap(find.text('Check automatically'));
     for (var i = 0; i < 60; i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
@@ -82,7 +82,7 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'auto update');
     await tester.pump();
 
-    expect(find.text('Automatically update'), findsOneWidget);
+    expect(find.text('Check automatically'), findsOneWidget);
     expect(find.text('Updates'), findsWidgets);
   });
 
@@ -95,7 +95,7 @@ void main() {
     await openSection(tester, 'Updates');
     expect(c.config.autoCheck(), isTrue);
 
-    await tester.tap(find.text('Automatically update'));
+    await tester.tap(find.text('Check automatically'));
     for (var i = 0; i < 60; i++) {
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)));
@@ -133,62 +133,69 @@ void main() {
   });
 
   testWidgets(
-      'GitHub token (optional): paste, replace and remove, masked, '
-      'kept in secure storage', (tester) async {
+      'GitHub token (the package row): paste, replace and remove, masked, '
+      'kept in secure storage under the same key', (tester) async {
     FlutterSecureStorage.setMockInitialValues({});
     final github = FakeGithub();
     final c = fakeController(github: github, downloader: FakeDownloader());
     await pumpSettings(tester);
     await openSection(tester, 'Updates');
-    final row = find.text('GitHub token (optional)');
+    final row = find.byKey(const Key('updates.token'));
     await tester.scrollUntilVisible(row, 80,
         scrollable: find.byType(Scrollable).first);
-    expect(find.text("Only needed if this app's repo is private."),
-        findsOneWidget);
+    expect(find.textContaining('No token'), findsOneWidget);
 
     Future<void> settle() async {
+      // The tile saves 600 ms after the last keystroke, then reloads.
+      await tester.pump(const Duration(milliseconds: 700));
       for (var i = 0; i < 10; i++) {
         await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 5)));
         await tester.pump();
       }
+    }
+
+    final field = find.byKey(const Key('updates.token.field'));
+    Future<void> open() async {
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> type(String value) async {
+      await open();
+      await tester.pumpAndSettle();
+      await tester.enterText(field, value);
+      expect(tester.widget<TextField>(field).obscureText, isTrue);
+      await settle();
+      await tester.tap(find.text('Close'));
+      await settle();
       await tester.pumpAndSettle();
     }
 
     // Paste.
-    await tester.tap(row);
-    await tester.pumpAndSettle();
-    final field = find.descendant(
-        of: find.byType(AlertDialog), matching: find.byType(TextField));
-    await tester.enterText(field, ' github_pat_one ');
-    expect(tester.widget<TextField>(field).obscureText, isTrue);
-    await tester.tap(find.text('Save'));
-    await settle();
+    await type(' github_pat_one ');
     expect(await AppUpdates.readToken(), 'github_pat_one');
     expect(c.hasToken, isTrue, reason: 'reloadToken ran');
     expect(find.textContaining('github_pat_one'), findsNothing,
         reason: 'the value is never shown');
-    expect(find.textContaining('Saved on this phone'), findsOneWidget);
+    expect(find.textContaining('Token set'), findsOneWidget);
 
     // Replace.
-    await tester.tap(row);
-    await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(field).controller!.text, isEmpty,
-        reason: 'the saved token is not put back into the field');
-    await tester.enterText(field, 'github_pat_two');
-    await tester.tap(find.text('Save'));
-    await settle();
+    await type('github_pat_two');
     expect(await AppUpdates.readToken(), 'github_pat_two');
 
     // Remove.
-    await tester.tap(row);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Remove'));
+    await open();
+    await tester.tap(find.text('Remove token'));
     await settle();
+    await tester.tap(find.text('Close'));
+    await settle();
+    await tester.pumpAndSettle();
     expect(await AppUpdates.readToken(), isNull);
     expect(c.hasToken, isFalse);
-    expect(find.text("Only needed if this app's repo is private."),
-        findsOneWidget);
+    expect(find.textContaining('No token'), findsOneWidget);
     // Saving a token started polling (a periodic timer): stop it here, the
     // fake-async zone checks for pending timers before tearDown runs.
     c.dispose();

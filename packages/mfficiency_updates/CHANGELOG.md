@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.9.0 - 2026-10-30
+
+- **The same settings rows in every app** (README.md › Settings rows):
+  `ProblemReportSendTile` (Debugging › Send a report), `UpdateTokenTile`
+  (Updates › GitHub token, saved as typed, checked at once), and the full
+  backup split into `FullBackupNowTile`, `FullBackupRestoreTile`,
+  `FullBackupLocationTile`, `FullBackupScheduleTile`, `FullBackupLastTile`
+  (`FullBackupTiles` is now those five in that order).
+- **Automatic full backups:** `FullBackup.schedule` (off, daily, weekly;
+  `FullBackupConfig.defaultSchedule`, weekly), `setSchedule`,
+  `backupIfDue()` and `startSchedule()` (after the first frame and on every
+  resume).
+- `ProblemReportSettingsTile` is titled "GitHub token" (key icon).
+- Fix: on Windows an interrupted download started over (its `.part` was
+  deleted: paths compared with mixed separators).
+- Breaking: `FullBackupStrings.lastBackup` is gone (the Last backup row uses
+  `lastTitle`, `lastNever` and `dateTime`); `backupSubtitle` no longer
+  names the folder (the Backup location row does).
+
 ## 1.8.0 - 2026-10-30
 
 - **Other apps:** `OtherAppsLink` (the row at the bottom of About) opens

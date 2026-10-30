@@ -103,18 +103,21 @@ file is the short operational guide.
   it in the app. `lib/services/app_updates.dart` (`AppUpdates`) only passes app-specific
   config: one `UpdateController` (`AppUpdates.controllerFor`) made in `main()`
   (`UpdatesApp.todo`, tag prefix `v`; public repo `Mfficiency/best_todo_2`, `privateRepo` false;
-  optional read-only token from Settings → Updates in `flutter_secure_storage` via
-  `AppUpdates.readToken`/`saveToken` = `tokenProvider` + `reloadToken()`, so a repo turned
+  optional read-only token from Settings → Updates → GitHub token (the package's
+  `UpdateTokenTile`) in `flutter_secure_storage` via
+  `AppUpdates.readToken`/`writeToken` = `tokenProvider` + `reloadToken()`, so a repo turned
   private keeps updating; checks
-  every 15 minutes, also on resume when due; the "Automatically update" switch =
+  every 15 minutes, also on resume when due; the "Check automatically" switch =
   `UpdateConfig.autoCheck`, Settings calls the controller's `autoCheckChanged()`; `music-v…`
   releases here are Best Music's bridge releases, never offered), started after the first
   frame; `promptAllowed` (`AppUpdates.promptAllowed`, false while the
   intro/pickers are open) and `beforeInstall` = the package's `FullBackup.beforeUpdate`
   (`AppUpdates.backup`, made first thing in `main()` by `AppUpdates.createBackup`: every
   file in the app's folders + SharedPreferences to `Download/BestToDo/Backups/*.tar.gz`,
-  kept across uninstalls, `pre_update_backup/` excluded; Settings → Backup shows
-  `FullBackupTiles`, a new install gets `offerRestore` after the first frame); the old update
+  kept across uninstalls, `pre_update_backup/` excluded; Settings → Backup & data shows
+  `FullBackupTiles` on Android (the folder backup `AutoBackupService` is retired there:
+  `AppUpdates.fullBackupShown`, its schedule adopted once by `adoptFolderBackupSchedule`),
+  a new install gets `offerRestore` and `startSchedule()` after the first frame); the old update
   prefs through the package's `migrateLegacyUpdateState`. GitHub's rate limit pauses the
   automatic checks (package). Releases without an APK are never offered. Behaviour: **every** download is silent (into the app cache; one SnackBar for a
   tap, progress only as passive text on the Changelog's `UpdateStatusCard` and the Check for
@@ -130,8 +133,8 @@ file is the short operational guide.
 - Report a problem to Claude (SPEC.md §11): a double tap on the drawer header (name +
   version) opens the package's report sheet; `lib/services/problem_reports.dart`
   (`ProblemReports`) only passes the repo, the logs (sync + Todoist sync history,
-  `alarm_log.txt`, `LogService`) and the token (secure storage; Settings → Updates →
-  Problem reports to Claude). The issue (label `claude-fix`) runs
+  `alarm_log.txt`, `LogService`) and the token (secure storage; Settings → Debugging →
+  GitHub token). The issue (label `claude-fix`) runs
   `.github/workflows/claude-fix.yml`, which needs the repo secret `CLAUDE_CODE_OAUTH_TOKEN`
   (`claude setup-token`) or `ANTHROPIC_API_KEY`.
 - Other apps (SPEC.md §11): the last item of About is the package's `OtherAppsLink` →

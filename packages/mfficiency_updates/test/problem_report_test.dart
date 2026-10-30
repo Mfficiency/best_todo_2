@@ -150,7 +150,10 @@ void main() {
                 child: const Text('App 1.2.3'),
               ),
             ),
-            body: ListView(children: [ProblemReportSettingsTile(reporter: r)]),
+            body: ListView(children: [
+              ProblemReportSendTile(reporter: r),
+              ProblemReportSettingsTile(reporter: r),
+            ]),
           ),
         );
 
@@ -180,6 +183,14 @@ void main() {
       expect((posts.single.$3! as Map)['title'], 'Problem report: It crashed');
       expect(find.text('Report a problem to Claude'), findsNothing);
       expect(find.textContaining('Sent as issue #12'), findsOneWidget);
+    });
+
+    testWidgets('Settings › Send a report opens the same sheet', (tester) async {
+      await tester.pumpWidget(host(reporter()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('problemReport.send')));
+      await tester.pumpAndSettle();
+      expect(find.text('Report a problem to Claude'), findsOneWidget);
     });
 
     testWidgets('a single tap does nothing', (tester) async {
