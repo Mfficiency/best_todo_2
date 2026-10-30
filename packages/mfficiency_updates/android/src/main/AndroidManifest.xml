@@ -15,6 +15,16 @@
             <action android:name="android.intent.action.INSTALL_PACKAGE" />
             <data android:scheme="content" android:mimeType="application/vnd.android.package-archive" />
         </intent>
+        <!-- "Other apps" shows whether these are installed and opens them
+             (lib/src/other_apps.dart, mfficiencyApps). -->
+        <package android:name="com.mfficiency.best_todo_2" />
+        <package android:name="com.mfficiency.best_music" />
+        <package android:name="com.mfficiency.best_collage" />
+        <package android:name="ch.mfficiency.bestfloory" />
+        <package android:name="ch.mfficiency.hallyremote" />
+        <package android:name="com.mfficiency.vesta_immo" />
+        <package android:name="com.bestwatchfeatures" />
+        <package android:name="app.mostlygoodnews" />
     </queries>
 
     <application>

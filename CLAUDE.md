@@ -134,6 +134,11 @@ file is the short operational guide.
   Problem reports to Claude). The issue (label `claude-fix`) runs
   `.github/workflows/claude-fix.yml`, which needs the repo secret `CLAUDE_CODE_OAUTH_TOKEN`
   (`claude setup-token`) or `ANTHROPIC_API_KEY`.
+- Other apps (SPEC.md §11): the last item of About is the package's `OtherAppsLink` →
+  `OtherAppsPage` (every other Mfficiency app: installed or not, newest release, Install /
+  Update / Open). One `OtherAppsController`, `AppUpdates.otherApps`
+  (`lib/services/app_updates.dart`), on the updater's own `http`/`platform`, with the
+  problem-report token as `fallbackToken` for the private apps.
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
   build. CI keeps it current; locally refresh it with
   `dart run tool/sync_test_report.dart` (pulls the newest CI run from the `ci-reports`

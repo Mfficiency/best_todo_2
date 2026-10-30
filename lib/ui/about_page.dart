@@ -56,6 +56,14 @@ class AboutPage extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               const UpdateSection(),
+              // Last: the other Mfficiency apps, to install from here.
+              const SizedBox(height: 16),
+              Card(
+                key: const Key('about.otherApps'),
+                margin: EdgeInsets.zero,
+                clipBehavior: Clip.antiAlias,
+                child: OtherAppsLink(controller: AppUpdates.otherApps),
+              ),
             ],
           ),
         ),

@@ -105,6 +105,21 @@ class UpdatePlatform {
   /// nothing was picked.
   Future<String?> pickFile() => _call<String>('pickFile');
 
+  /// Another app's installed version, or null when it isn't installed (or
+  /// off Android). Only the packages the plugin's manifest lists.
+  Future<({String version, int build})?> packageInfo(String appId) async {
+    final info = await _call<Map<Object?, Object?>>('packageInfo', {'id': appId});
+    if (info == null) return null;
+    return (
+      version: '${info['versionName'] ?? ''}',
+      build: (info['versionCode'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// Opens another installed app; false when it couldn't.
+  Future<bool> launchApp(String appId) async =>
+      await _call<bool>('launchApp', {'id': appId}) ?? false;
+
   /// Closes the app and starts it again (after a restore).
   Future<void> restartApp() => _call<void>('restartApp');
 }

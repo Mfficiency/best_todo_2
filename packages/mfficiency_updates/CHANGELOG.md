@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.0 - 2026-10-30
+
+- **Other apps:** `OtherAppsLink` (the row at the bottom of About) opens
+  `OtherAppsPage`: every other Mfficiency Android app (`mfficiencyApps`,
+  this one left out) with whether it is installed, its newest release
+  (highest build of any channel, its own tag scheme) and Install / Update /
+  Open. The download is silent like an update's (own folder
+  `<cache>/other_apps`, then moved to `<cache>/updates` for the
+  installer), then Android asks. Private repos need a token with Contents:
+  Read-only (the page's key icon, or the app's `fallbackToken`, e.g. the
+  problem-report token); without one, or off a phone, Open on GitHub.
+  Native: `packageInfo`, `launchApp`; the manifest's `<queries>` lists the
+  apps. `OtherAppsStrings` (English defaults).
+- The problem-report token help mentions adding Contents: Read-only so one
+  token serves both.
+
 ## 1.7.0 - 2026-10-29
 
 - **Problem reports to Claude:** `ProblemReporter` sends the user's

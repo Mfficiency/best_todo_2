@@ -10,6 +10,7 @@ import '../config.dart';
 import '../utils/date_time_format.dart';
 import 'log_service.dart';
 import 'pre_update_backup.dart';
+import 'problem_reports.dart';
 
 export 'package:mfficiency_updates/mfficiency_updates.dart';
 
@@ -44,7 +45,9 @@ enum UpdatesApp {
 ///   while the intro or a first-start picker is open) as its
 ///   `promptAllowed`;
 /// * the app's date format ([strings]) and log ([LogService]);
-/// * the update prefs from before the package ([migrateLegacyState]).
+/// * the update prefs from before the package ([migrateLegacyState]);
+/// * About › Other apps ([otherApps], the package's
+///   [OtherAppsController]) on the same HTTP client and platform.
 class AppUpdates {
   AppUpdates._();
 
@@ -244,6 +247,38 @@ class AppUpdates {
     await c.init();
     return controller = c;
   }
+
+  // ── About › Other apps ───────────────────────────────────────────────
+
+  /// BestToDo's applicationId, left out of the other apps' list.
+  static const String appId = 'com.mfficiency.best_todo_2';
+
+  static OtherAppsController? _otherApps;
+
+  /// About › Other apps (package README.md › Other apps): every other
+  /// Mfficiency app, installed or not, its newest release and Install /
+  /// Update / Open. Made on first use on [controller]'s HTTP client and
+  /// platform (the package defaults before [create], e.g. in tests); the
+  /// problem-report token ([ProblemReports]) also reads the private apps.
+  static OtherAppsController get otherApps =>
+      _otherApps ??= createOtherApps();
+
+  @visibleForTesting
+  static set otherApps(OtherAppsController? c) => _otherApps = c;
+
+  static OtherAppsController createOtherApps({
+    UpdateHttp? http,
+    UpdatePlatform? platform,
+  }) =>
+      OtherAppsController(
+        currentAppId: appId,
+        http: http ?? controller?.http,
+        platform: platform ??
+            controller?.platform ??
+            UpdatePlatform(openUrl: ProblemReports.openUrl),
+        fallbackToken: () => ProblemReports.instance.token(),
+        userAgent: 'BestToDo-other-apps',
+      );
 
   /// After the first frame: Android's install time, the check when due,
   /// polling and the resume check. [context] is above every screen (the

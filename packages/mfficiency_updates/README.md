@@ -98,6 +98,33 @@ final reporter = ProblemReporter(
 // Settings:     ProblemReportSettingsTile(reporter: reporter)
 ```
 
+## Other apps
+
+The row **Other apps** at the bottom of About (`OtherAppsLink`) opens
+`OtherAppsPage`: every other Mfficiency Android app from `mfficiencyApps`
+(name, appId, repo, tag scheme, private or not; the running app is left
+out), whether it is installed (`UpdatePlatform.packageInfo`; Android 11+
+only answers for the packages in the plugin manifest's `<queries>`, so a
+new app goes in both places), its newest release with an APK (highest
+build of any channel) and **Install** / **Update** / **Open**. Install
+downloads silently like an update (`<cache>/other_apps`, resumed), moves
+the APK into `<cache>/updates` (the folder the plugin shares) and hands
+it to Android's installer. Private repos need a token that can read them
+(fine-grained, Contents: Read-only): the page's key icon (SharedPreferences
+`other_apps.github_token`) or the app's `fallbackToken` (e.g. the
+problem-report token; one token with Contents: Read-only + Issues: Read
+and write serves both). Without one, off a phone or for a release without
+APK, **Open on GitHub** shows its releases in the browser. Pull down asks
+again; coming back from the installer re-reads what is installed.
+
+```dart
+final otherApps = OtherAppsController(
+  fallbackToken: reporter.token,          // optional
+  platform: UpdatePlatform(openUrl: openInBrowser),
+);
+// At the bottom of About:  OtherAppsLink(controller: otherApps)
+```
+
 ## Full backup (before every update, and before a reinstall)
 
 `FullBackup` puts **everything the app keeps on the phone** into one file in

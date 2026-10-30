@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.136] - 2026-10-30
+- Other apps: at the very bottom of About, a new row opens a page with all the other Mfficiency apps (Best Music, BestCollage, BestFloory, Hally Remote, Vesta Immo, Best Watch, MostlyGoodNews). Each shows whether it is installed and its newest version, with Install, Update or Open: the download runs quietly in the background like an update, then Android asks once. The private apps need a GitHub token that can read them (the key icon on that page, or the Problem reports token if it also has Contents: Read-only); without one they open on GitHub. Updates package 1.8.0.
+
 ## [0.2.135] - 2026-10-29
 - Report a problem to Claude: double tap the app name and version at the top of the menu, describe what went wrong and tap Send to Claude. The app's logs (alarm log, sync history, app events) go along if you leave them on; Claude fixes it and the fix arrives as the next update. Settings → Updates → Problem reports to Claude explains the GitHub token that lets the app send it by itself (without one, the report opens on GitHub for you to submit). Updates package 1.7.0.
 

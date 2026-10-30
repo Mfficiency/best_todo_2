@@ -9,6 +9,8 @@ export 'src/controller.dart';
 export 'src/downloader.dart';
 export 'src/http.dart';
 export 'src/legacy.dart';
+export 'src/other_apps.dart';
+export 'src/other_apps_widgets.dart';
 export 'src/platform.dart';
 export 'src/problem_report.dart';
 export 'src/problem_report_widgets.dart';

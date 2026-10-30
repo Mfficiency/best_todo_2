@@ -3861,6 +3861,24 @@ in App Logs → Todoist — onboarding has already finished by then.
       `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`, Claude Pro/Max) or
       `ANTHROPIC_API_KEY` (console.anthropic.com), and the Claude GitHub app installed.
       Tests: `test/update/problem_report_test.dart`.
+    - **Other apps (0.2.136, package 1.8.0):** the **last item of About**
+      (`about_page.dart`, a `Card` `Key('about.otherApps')` below the update section) is the
+      package's `OtherAppsLink` ("Other apps", `Key('otherApps.link')`), which pushes its
+      `OtherAppsPage`: every other Mfficiency Android app from the package's catalogue
+      `mfficiencyApps` (Best Music, BestCollage, BestFloory, Hally Remote, Vesta Immo, Best
+      Watch, MostlyGoodNews; BestToDo itself left out by `currentAppId`
+      `AppUpdates.appId` = `com.mfficiency.best_todo_2`), each with installed or not (the
+      plugin's `packageInfo`, its manifest `<queries>`), the newest release with an APK
+      (highest build of any channel) and **Install** / **Update** / **Open** (silent download
+      like an update, then Android's installer) or **Open on GitHub** (off a phone, no APK,
+      or a private repo without access). Pull-down asks again. The app only configures it:
+      `AppUpdates.otherApps` (one `OtherAppsController`, made on first use; tests set a
+      fake) = `createOtherApps()` on the running `AppUpdates.controller`'s `http` and
+      `platform` (the package defaults with url_launcher as `openUrl` before it exists),
+      `fallbackToken` = `ProblemReports.instance.token` (a token with Contents: Read-only as
+      well reads the private apps), User-Agent `BestToDo-other-apps`. The page's own token
+      (key icon) is the package's (SharedPreferences `other_apps.github_token`).
+      Tests: `test/update/other_apps_test.dart`.
     - **Behaviour (the package's):** checks on the first frame when the last check is 15+
       minutes old, every 15 minutes while in the foreground, **when the app comes back to
       the foreground** and the last check is 15+ minutes old, when the switch is turned on,

@@ -97,6 +97,8 @@ class MfficiencyUpdatesPlugin :
                 "openInstallSettings" -> result.success(openInstallSettings())
                 "installTime" -> result.success(installTime())
                 "appId" -> result.success(context.packageName)
+                "packageInfo" -> result.success(packageInfo(call.argument<String>("id")!!))
+                "launchApp" -> result.success(launchApp(call.argument<String>("id")!!))
                 "saveToDownloads" -> saveToDownloads(call, result)
                 "pickFile" -> pickFile(result)
                 "restartApp" -> {
@@ -215,6 +217,34 @@ class MfficiencyUpdatesPlugin :
             @Suppress("DEPRECATION") pm.getPackageInfo(context.packageName, 0)
         }
         return info.lastUpdateTime
+    }
+
+    /**
+     * Another app's installed version ({versionName, versionCode}), or null
+     * when it isn't installed. Android 11+ only answers for the packages the
+     * manifest's <queries> lists (the Mfficiency apps, for "Other apps").
+     */
+    private fun packageInfo(id: String): Map<String, Any?>? = try {
+        val pm = context.packageManager
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageInfo(id, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION") pm.getPackageInfo(id, 0)
+        }
+        val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION") info.versionCode.toLong()
+        }
+        mapOf("versionName" to info.versionName, "versionCode" to code)
+    } catch (e: PackageManager.NameNotFoundException) {
+        null
+    }
+
+    /** Opens another installed app; false when it has no launcher screen. */
+    private fun launchApp(id: String): Boolean {
+        val intent = context.packageManager.getLaunchIntentForPackage(id) ?: return false
+        return start(intent)
     }
 
     /** Starts an activity from the app, or as a new task without one. */
