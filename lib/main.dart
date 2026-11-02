@@ -13,6 +13,7 @@ import 'ui/food_diary_page.dart';
 import 'ui/home_scaffold_key.dart';
 import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
+import 'ui/system_bar_safe_area.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
@@ -555,11 +556,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       navigatorKey: appNavigatorKey,
       builder: (context, child) {
         final page = child ?? const SizedBox.shrink();
-        return SafeArea(
-          top: false,
-          left: false,
-          right: false,
-          bottom: true,
+        // Every screen, sheet and dialog stays clear of Android's navigation
+        // bar (bottom, or the side in landscape).
+        return SystemBarSafeArea(
           // The slim update banner ("Update ready · <version>" after
           // Android's confirm was cancelled, or a failed download's Try
           // again) sits below every screen; empty otherwise.
