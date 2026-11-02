@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.139] - 2026-11-02
+- Every screen, menu, bottom sheet and dialog stays clear of Android's navigation bar: the app checks whether the bar is there and how tall it is (the slim gesture line or the Back/Home/Recents buttons, also on the side in landscape) and keeps every button and line of text above it; the strip behind the bar takes the page colour
+
 ## [0.2.138] - 2026-10-30
 - What's new: after an update, a small sheet lists the changes since the version you had before, once. Settings → Releases (a new section, just above Debugging) turns it off; it is on by default.
 - Every GitHub token dialog (Debugging, Updates, About → Other apps) works the same: the token field at the top (show it, copy it), one short line below, the full steps folded under "How to get a token", and Close always visible. The rows just say Token set or No token. Updates package 1.10.0.
