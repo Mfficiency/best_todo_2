@@ -2,7 +2,7 @@ name: besttodo
 description: A simple Flutter to-do application
 publish_to: 'none'
 
-version: 0.4.0+449
+version: 0.4.1+450
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -13,7 +13,7 @@ dependencies:
 
   cupertino_icons: ^1.0.2
   path_provider: ^2.1.2
-  flutter_markdown: ^0.6.10
+  flutter_markdown_plus: ^1.0.12  # the maintained successor of the discontinued flutter_markdown
   home_widget: ^0.8.0
   device_info_plus: ^9.0.2
   shared_preferences: ^2.2.2
