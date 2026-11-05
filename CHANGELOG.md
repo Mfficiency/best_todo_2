@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.115] - 2026-11-05
+- Todoist sync on a second phone or tablet: tasks you made (or already approved) in BestToDo on another device now go straight onto the home screen instead of all waiting in Waiting for Approval. Only tasks typed into Todoist itself (or still waiting on your other device) ask for approval
+- Todoist sync no longer deletes a task from Todoist (and so from your other devices) when its copy on this device went missing without you deleting it, which could happen while the first import was still finishing in the background; it is pulled back in instead. The home screen also refreshes as soon as that background import finishes
+
 ## [0.2.114] - 2026-10-15
 - Changelog: every version now shows when it was built, how long the build took and the size of its APK (taken from its GitHub release; versions without that keep the build lines the changelog already had). The update module is version 1.5.0.
 

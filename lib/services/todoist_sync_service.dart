@@ -337,13 +337,16 @@ class TodoistSyncService {
     }
 
     final now = DateTime.now();
+    final existing = await ItemRepository.instance.loadItems();
+    final takenUids = {for (final t in existing) t.uid};
     List<Task> pull(List<Map<String, dynamic>> remote) {
       final pulled = <Task>[];
       for (final r in remote) {
         final id = _idOf(r['id']);
         if (_taskMap.any((e) => e.todoistId == id)) continue;
         final task = _taskFromRemote(r, todoistToLocalProject,
-            remoteProjectNames: remoteProjectIdToName);
+            remoteProjectNames: remoteProjectIdToName, takenUids: takenUids);
+        takenUids.add(task.uid);
         pulled.add(task);
         _taskMap.add(TodoistSyncMapEntry(
           localUid: task.uid,
@@ -360,7 +363,6 @@ class TodoistSyncService {
       return pulled;
     }
 
-    final existing = await ItemRepository.instance.loadItems();
     final todayLocal = pull(todayRemote);
     existing.addAll(todayLocal);
     await ItemRepository.instance
@@ -541,9 +543,32 @@ class TodoistSyncService {
 
     // --- 1: local task no longer active (completed-and-rolled-over, or
     // deleted) -> reconcile on the Todoist side. --------------------------
+    final allLocalUids = {for (final t in allLocal) t.uid};
+    // Todoist ids whose local task vanished without a trace — see below.
+    final restoreTodoistIds = <String>{};
+    final staleEntries = <TodoistSyncMapEntry>{};
     for (final entry in entriesAtStart) {
       if (syncableByUid.containsKey(entry.localUid)) continue;
       final terminal = deletedByUid[entry.localUid];
+      if (terminal == null && !allLocalUids.contains(entry.localUid)) {
+        // Not active, not archived, not in the bin: the task was never
+        // deleted by a human — its list was overwritten under it (a page
+        // saving a stale in-memory copy while a pull was landing, e.g. the
+        // first-launch import's background phase on a second device). A
+        // real delete always leaves an archive/bin record. Deleting the
+        // Todoist task here wiped it for every other device too, so instead
+        // drop the stale mapping and let step 4 pull it back in.
+        // Removed by identity, not uid: the restored task keeps that uid
+        // (see _taskFromRemote), and its fresh mapping must survive.
+        restoreTodoistIds.add(entry.todoistId);
+        staleEntries.add(entry);
+        LogService.add(
+          'Todoist sync',
+          'Restoring task ${entry.todoistId}: its local copy vanished '
+              'without being deleted',
+        );
+        continue;
+      }
       final wasCompletion = terminal?.isDone ?? false;
       try {
         if (wasCompletion) {
@@ -680,7 +705,10 @@ class TodoistSyncService {
     for (final remoteTask in remoteTasks) {
       final id = _idOf(remoteTask['id']);
       if (handledTodoistIds.contains(id)) continue;
-      if (mapByUidStart.values.any((e) => e.todoistId == id)) continue;
+      if (!restoreTodoistIds.contains(id) &&
+          mapByUidStart.values.any((e) => e.todoistId == id)) {
+        continue;
+      }
 
       final parts = TodoistMetadataCodec.parse(
         remoteTask['description'] as String? ?? '',
@@ -713,8 +741,10 @@ class TodoistSyncService {
       }
 
       final newTask = _taskFromRemote(remoteTask, todoistToLocalProject,
-          remoteProjectNames: remoteProjectIdToName);
+          remoteProjectNames: remoteProjectIdToName,
+          takenUids: {...allLocalUids, ...deletedByUid.keys});
       allLocal.add(newTask);
+      allLocalUids.add(newTask.uid);
       _taskMap.add(TodoistSyncMapEntry(
         localUid: newTask.uid,
         todoistId: id,
@@ -749,7 +779,8 @@ class TodoistSyncService {
       changeCount++;
     }
 
-    _taskMap.removeWhere((e) => removedUids.contains(e.localUid));
+    _taskMap.removeWhere(
+        (e) => staleEntries.contains(e) || removedUids.contains(e.localUid));
 
     await ItemRepository.instance
         .saveItems(allLocal, source: TaskChangeSource.sync);
@@ -963,15 +994,34 @@ class TodoistSyncService {
   /// needs the same `remoteProjects` fetch every call site already has. A
   /// [_sourceMarkerPattern] line in the description wins over the project
   /// name when both are present.
+  ///
+  /// **Except a task another BestToDo install pushed** (its description
+  /// carries this app's own trailer, with the originating task's `uid`):
+  /// that task was created — or already approved — in BestToDo on another
+  /// device, so it is pulled straight into the regular lists instead of the
+  /// Waiting for Approval queue, keeping that device's [Task.uid] (unless
+  /// [takenUids] already holds it) and creation time. Gating it too is what
+  /// left a second phone/tablet with an empty home screen and every one of
+  /// the first device's tasks stuck in Waiting for Approval. A task that was
+  /// still pending on the pushing device keeps the token through its native
+  /// labels, so it stays pending here as well.
   Task _taskFromRemote(
     Map<String, dynamic> remoteTask,
     Map<String, String> todoistToLocalProject, {
     Map<String, String> remoteProjectNames = const {},
+    Set<String> takenUids = const {},
   }) {
     final parts = TodoistMetadataCodec.parse(
       remoteTask['description'] as String? ?? '',
     );
     final meta = parts.meta;
+    final rawUid = meta?['uid'];
+    final embeddedUid = rawUid is String && rawUid.isNotEmpty ? rawUid : null;
+    final fromBestToDo = embeddedUid != null;
+    final remoteLabels = _labelsFromRemote(remoteTask);
+    final metaCreatedAt = meta?['createdAt'] is String
+        ? DateTime.tryParse(meta!['createdAt'] as String)
+        : null;
     final (visibleDescription, markerSourceTitle) =
         _extractSourceMarker(parts.visible);
     final remoteProjectId = remoteTask['project_id'] == null
@@ -980,14 +1030,25 @@ class TodoistSyncService {
     final mapped =
         remoteProjectId == null ? null : todoistToLocalProject[remoteProjectId];
     final task = Task(
+      uid: fromBestToDo && !takenUids.contains(embeddedUid)
+          ? embeddedUid
+          : null,
       title: remoteTask['content'] as String? ?? '',
       description: visibleDescription,
       note: meta?['note'] as String? ?? '',
-      label: addLabelToken(_labelsFromRemote(remoteTask), waitingApprovalToken),
-      createdAt: _remoteCreatedAt(remoteTask) ?? DateTime.now(),
+      label: fromBestToDo
+          ? remoteLabels
+          : addLabelToken(remoteLabels, waitingApprovalToken),
+      createdAt: (fromBestToDo ? metaCreatedAt?.toLocal() : null) ??
+          _remoteCreatedAt(remoteTask) ??
+          DateTime.now(),
       origin: TaskChangeSource.sync,
-      pendingSourceTitle: markerSourceTitle ??
-          (remoteProjectId == null ? null : remoteProjectNames[remoteProjectId]),
+      pendingSourceTitle: fromBestToDo
+          ? null
+          : markerSourceTitle ??
+              (remoteProjectId == null
+                  ? null
+                  : remoteProjectNames[remoteProjectId]),
       projectId: (mapped == _wishlistProjectKey || mapped == _futureProjectKey)
           ? null
           : mapped,

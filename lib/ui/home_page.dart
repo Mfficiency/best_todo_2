@@ -1159,6 +1159,8 @@ class _HomePageState extends State<HomePage>
     // drawer entry until acknowledged; lazy load, nothing blocks startup.
     SyncService.instance.ensureLoaded();
     TodoistSyncService.instance.ensureLoaded();
+    _todoistSyncing = TodoistSyncService.instance.syncing
+      ..addListener(_onTodoistSyncingChanged);
     // Project names are shown as tags on task tiles, so load them here and
     // not only when the Projects tool is opened.
     ProjectService.instance.load();
@@ -1333,8 +1335,21 @@ class _HomePageState extends State<HomePage>
     await _mergeWidgetCompletions();
   }
 
+  /// A Todoist sync that writes storage on its own finished — most of all
+  /// the first-launch import's background phase, which lands everything
+  /// past today while this page already shows (and would re-save) the
+  /// today-only list it loaded. Reload so those tasks appear, and so the
+  /// next `_saveTasks` doesn't overwrite them with the stale copy.
+  ValueNotifier<bool>? _todoistSyncing;
+
+  void _onTodoistSyncingChanged() {
+    if (_todoistSyncing?.value ?? true) return;
+    if (mounted) unawaited(_reloadTasksFromStorage());
+  }
+
   @override
   void dispose() {
+    _todoistSyncing?.removeListener(_onTodoistSyncingChanged);
     WidgetsBinding.instance.removeObserver(this);
     ShareIntentService.instance.unregisterConsumer(_addSharedTask);
     if (openRunningDiceTimer == _reopenRunningDiceTimer) {

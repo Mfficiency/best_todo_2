@@ -9,6 +9,7 @@ import 'package:besttodo/services/item_views.dart';
 import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/todoist_api_client.dart';
+import 'package:besttodo/services/todoist_metadata_codec.dart';
 import 'package:besttodo/services/todoist_sync_service.dart';
 import 'package:besttodo/utils/label_utils.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState;
@@ -346,10 +347,102 @@ void main() {
     await TodoistSyncService.instance.syncNow();
     expect(fake.tasks.length, 1);
 
+    // A real delete moves the task to the archive (HomePage._deleteTask).
+    final tasks = await StorageService().loadTaskList();
+    await StorageService()
+        .saveDeletedTaskList([tasks.single..deletedAt = DateTime.now()]);
     await StorageService().saveTaskList(<Task>[]);
     final entry = await TodoistSyncService.instance.syncNow();
     expect(entry!.itemCount, 1);
     expect(fake.tasks, isEmpty);
+  });
+
+  test('a synced task whose local copy vanished without being deleted is '
+      'pulled back in, not deleted on Todoist', () async {
+    // E.g. a page saving a stale in-memory list over a pull that had just
+    // landed: no archive or bin record, so no human deleted it.
+    await StorageService().saveTaskList([Task(title: 'Keep me')]);
+    await TodoistSyncService.instance.syncNow();
+    final uid = (await StorageService().loadTaskList()).single.uid;
+    final remoteId = fake.tasks.keys.single;
+
+    await StorageService().saveTaskList(<Task>[]);
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.success, isTrue);
+    expect(fake.tasks.keys, [remoteId]);
+
+    final restored = await ItemRepository.instance.loadItems();
+    expect(restored.single.title, 'Keep me');
+    expect(restored.single.uid, uid);
+    // It was this app's own task — no approval round-trip for it.
+    expect(ItemViews.isApproved(restored.single), isTrue);
+    expect(TodoistSyncService.instance.entryForLocalUid(uid)?.todoistId,
+        remoteId);
+
+    // Stable afterwards: no duplicate, nothing else to do.
+    final again = await TodoistSyncService.instance.syncNow();
+    expect(again!.itemCount, 0);
+    expect(fake.tasks.length, 1);
+    expect(await ItemRepository.instance.loadItems(), hasLength(1));
+  });
+
+  test('a second device pulls tasks another BestToDo install pushed straight '
+      'into its lists, not into Waiting for Approval', () async {
+    final today = DateTime.now();
+    final dueToday = DateTime(today.year, today.month, today.day, 18);
+    final pendingOnFirst =
+        Task(title: 'Still pending', label: waitingApprovalToken);
+    await StorageService().saveTaskList([
+      Task(title: 'Buy milk', dueDate: dueToday, label: 'errand'),
+      Task(title: 'Someday idea'),
+    ]);
+    // First device: push its tasks (the pending one only reaches Todoist
+    // with its token once it's edited there — simulated by adding it after
+    // the first push and editing it).
+    await TodoistSyncService.instance.syncNow();
+    final firstDeviceUids = {
+      for (final t in await StorageService().loadTaskList()) t.title: t.uid,
+    };
+    expect(fake.tasks.length, 2);
+    fake.seedTask(
+      content: pendingOnFirst.title,
+      description: TodoistMetadataCodec.build(
+          visible: '', meta: {'uid': pendingOnFirst.uid}),
+      labels: [waitingApprovalToken],
+    );
+
+    // Second device: empty storage, fresh sync state, same account.
+    final secondDocs =
+        await Directory.systemTemp.createTemp('todoist_sync_second');
+    await File(
+            '${secondDocs.path}/${StorageService.wishlistImportFlagFileName}')
+        .writeAsString('done');
+    PathProviderPlatform.instance = _FakePathProvider(secondDocs.path);
+    StorageService.resetJournalBaselineForTest();
+    TodoistSyncService.resetForTest();
+    TodoistSyncService.instance.apiClientFactory =
+        (token) => TodoistApiClient(apiToken: token, client: fake.client);
+
+    final entry = await TodoistSyncService.instance.syncNow();
+    expect(entry!.success, isTrue);
+    final tasks = await ItemRepository.instance.loadItems();
+    expect(tasks, hasLength(3));
+
+    final milk = tasks.firstWhere((t) => t.title == 'Buy milk');
+    expect(milk.uid, firstDeviceUids['Buy milk']);
+    expect(milk.label, 'errand');
+    expect(ItemViews.homeBucket(tasks, 0, today).map((t) => t.title),
+        contains('Buy milk'));
+    expect(ItemViews.isApproved(tasks.firstWhere((t) => t.title == 'Someday idea')),
+        isTrue);
+    // Pending on the first device stays pending here too.
+    expect(ItemViews.waitingApproval(tasks).map((t) => t.title),
+        ['Still pending']);
+
+    // Nothing is pushed back just for being pulled.
+    final second = await TodoistSyncService.instance.syncNow();
+    expect(second!.itemCount, 0);
+    expect(fake.tasks.length, 3);
   });
 
   test('a task created in Todoist is pulled into the local list, tagged '
@@ -894,6 +987,38 @@ void main() {
       expect(afterPhaseTwo.every((t) => t.label.contains(waitingApprovalToken)),
           isTrue);
       expect(ItemViews.waitingApproval(afterPhaseTwo), hasLength(4));
+    });
+
+    test('tasks another BestToDo install pushed skip the approval queue',
+        () async {
+      fake.seedTask(
+        content: 'From my phone',
+        due: {'date': isoDate(DateTime.now())},
+        description: TodoistMetadataCodec.build(
+            visible: 'details', meta: {'uid': 'phone-uid-1'}),
+      );
+      fake.seedTask(
+        content: 'From my phone, later',
+        description: TodoistMetadataCodec.build(
+            visible: '', meta: {'uid': 'phone-uid-2'}),
+      );
+      fake.seedTask(content: 'Typed into Todoist');
+
+      final result = await TodoistSyncService.instance.startFirstLaunchImport();
+      await result!.finishInBackground();
+
+      final tasks = await ItemRepository.instance.loadItems();
+      expect(tasks, hasLength(3));
+      final phone = tasks.firstWhere((t) => t.title == 'From my phone');
+      expect(phone.uid, 'phone-uid-1');
+      expect(phone.description, 'details');
+      expect(ItemViews.isApproved(phone), isTrue);
+      expect(
+          ItemViews.isApproved(
+              tasks.firstWhere((t) => t.title == 'From my phone, later')),
+          isTrue);
+      expect(ItemViews.waitingApproval(tasks).map((t) => t.title),
+          ['Typed into Todoist']);
     });
 
     test('a task added locally while the background phase runs survives it',

@@ -449,6 +449,26 @@ approval) but never writes it again — so tasks pulled in before the rename don
 stranded. Use `hasWaitingApprovalToken`/`removeWaitingApprovalToken` rather than
 `labelHasToken`/`removeLabelToken` with the constant, or the legacy spelling is missed.
 
+**Tasks another BestToDo install pushed skip the gate (0.2.115).** A pulled task whose
+description carries this app's own `TodoistMetadataCodec` trailer with a `uid` was made (or
+already approved) in BestToDo on another device, so `_taskFromRemote` gives it the remote
+labels as they are (no token), that device's `uid` (unless already taken locally) and the
+trailer's `createdAt`. Before this, a second phone/tablet connected to the same account
+showed an empty home screen with every task of the first device in Waiting for Approval. A
+task still pending on the pushing device carries the token in its native labels, so it stays
+pending on the second device too; only tasks with no trailer (typed into Todoist, the Pocket
+routine) are gated.
+
+**A mapped task that vanished locally is restored, never deleted remotely (0.2.115).** Sync
+step 1 used to delete the Todoist task for any mapped local task that was no longer active.
+A real delete always leaves an archive (`deleted_tasks`) or bin record; a task with neither
+(and not in the active list at all) was overwritten by a stale in-memory save — e.g. the
+home page re-saving the today-only list the first-launch import's phase one left while its
+background phase landed the rest. That deleted the task on Todoist for every device. Now the
+stale map entry is dropped (by identity, since the restored task keeps its uid) and step 4
+pulls the task back in. `HomePage` also listens to `TodoistSyncService.syncing` and reloads
+from storage when it turns false, so it never holds the partial list after the import.
+
 The token is local-only at import: the sync map's fingerprint baseline is computed *with*
 it, so the initial pull pushes nothing back and the Todoist item's `labels` array stays
 untouched. Approving changes `_localFingerprint`, so the next sync pushes the shortened
