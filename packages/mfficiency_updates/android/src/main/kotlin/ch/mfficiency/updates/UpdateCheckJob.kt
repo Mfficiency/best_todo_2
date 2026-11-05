@@ -31,7 +31,14 @@ import io.flutter.view.FlutterCallbackInformation
  *
  * Skipped while one of the app's activities is started (the app checks by
  * itself then), and stopped as soon as one starts during a run, so the
- * app and this job never download the same APK at once.
+ * app and this job never download the same APK at once (the downloader's
+ * lock file covers the rest).
+ *
+ * An interrupted download is continued by a second, one-off job
+ * ([scheduleResume]: the app left the screen while downloading, or a
+ * download was cut off): it runs once a network is there and, while the run
+ * says the APK is still `incomplete`, again with back-off (30 s, doubling),
+ * each time continuing the `.part` where it stopped.
  */
 class UpdateCheckJob : JobService() {
     private val main = Handler(Looper.getMainLooper())
@@ -59,8 +66,14 @@ class UpdateCheckJob : JobService() {
                 .setMethodCallHandler { call, result ->
                     if (call.method == "done") {
                         result.success(null)
-                        Log.i(TAG, "background check: ${call.argument<String>("outcome")}")
-                        finish(false)
+                        val outcome = call.argument<String>("outcome")
+                        Log.i(TAG, "background check: $outcome")
+                        val incomplete = outcome == "incomplete"
+                        if (incomplete && params.jobId == JOB_ID) {
+                            // The hourly run found it cut off: continue soon.
+                            scheduleResume(applicationContext)
+                        }
+                        finish(incomplete && params.jobId == RESUME_JOB_ID)
                     } else {
                         result.notImplemented()
                     }
@@ -108,6 +121,8 @@ class UpdateCheckJob : JobService() {
 
         /** Unusual on purpose: an app's own jobs use small ids. */
         private const val JOB_ID = 0x4d465550 // "MFUP"
+        private const val RESUME_JOB_ID = 0x4d465551 // "MFUQ"
+        private const val RESUME_BACKOFF_MS = 30 * 1000L
         private const val TIMEOUT_MS = 9 * 60 * 1000L
 
         private var running: UpdateCheckJob? = null
@@ -154,8 +169,28 @@ class UpdateCheckJob : JobService() {
             return scheduler.schedule(job) == JobScheduler.RESULT_SUCCESS
         }
 
+        /**
+         * Continues an interrupted download soon: once a network is there
+         * (at the earliest after [delayMs]), then with back-off while it is
+         * still incomplete. Needs the entry point stored by [schedule].
+         */
+        fun scheduleResume(context: Context, delayMs: Long = 15 * 1000L): Boolean {
+            val handle = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getLong(KEY_HANDLE, 0L)
+            if (handle == 0L) return false
+            val scheduler = context.getSystemService(JobScheduler::class.java) ?: return false
+            val job = JobInfo.Builder(RESUME_JOB_ID, ComponentName(context, UpdateCheckJob::class.java))
+                .setMinimumLatency(delayMs)
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setBackoffCriteria(RESUME_BACKOFF_MS, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
+                .setPersisted(true)
+                .build()
+            return scheduler.schedule(job) == JobScheduler.RESULT_SUCCESS
+        }
+
         fun cancel(context: Context) {
             context.getSystemService(JobScheduler::class.java)?.cancel(JOB_ID)
+            context.getSystemService(JobScheduler::class.java)?.cancel(RESUME_JOB_ID)
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .remove(KEY_HANDLE).apply()
         }

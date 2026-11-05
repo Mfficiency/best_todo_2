@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'controller.dart';
 import 'downloader.dart';
 import 'http.dart';
 import 'other_apps_stub.dart' if (dart.library.io) 'other_apps_io.dart' as impl;
@@ -214,6 +217,44 @@ class OtherAppState {
       );
 }
 
+/// Where "Update all" is: downloading app [done] + 1 of [total]
+/// ([current]), or, with [installing], waiting for Android's installer
+/// ([left] still to come).
+class UpdateAllProgress {
+  const UpdateAllProgress({
+    required this.done,
+    required this.total,
+    this.current,
+    this.installing = false,
+    this.left = 0,
+  });
+
+  final int done;
+  final int total;
+  final String? current;
+  final bool installing;
+  final int left;
+}
+
+/// What "Update all" did.
+enum UpdateAllOutcome {
+  /// Every app is up to date: nothing to do.
+  upToDate,
+
+  /// The newer versions are downloaded and Android's installer opened for
+  /// the first; the others follow one after another.
+  started,
+
+  /// "Install unknown apps" has to be allowed first (its switch opened).
+  needsPermission,
+
+  /// Only on a phone.
+  unsupported,
+
+  /// Already running.
+  running,
+}
+
 /// What a tap on an app's button did.
 enum OtherAppAction {
   /// Android's installer was opened.
@@ -237,7 +278,7 @@ enum OtherAppAction {
 /// the updater's (silent, into the cache, resumed), then Android's installer
 /// asks; off a phone, or for a private app without a token, the release
 /// page opens in the browser.
-class OtherAppsController extends ChangeNotifier {
+class OtherAppsController extends ChangeNotifier with WidgetsBindingObserver {
   OtherAppsController({
     List<MfficiencyApp>? apps,
     this.currentAppId,
@@ -273,6 +314,21 @@ class OtherAppsController extends ChangeNotifier {
   final Future<String?> Function(String path) _stageApk;
 
   static const prefsKey = 'other_apps.github_token';
+
+  /// This app's own updater: "Update all" updates this app too, last
+  /// (installing it ends the app). Null: only the other apps.
+  UpdateController? selfUpdates;
+
+  /// "Update all" while it runs; null otherwise.
+  final updateAllProgress = ValueNotifier<UpdateAllProgress?>(null);
+
+  /// Apps whose download failed in the last "Update all".
+  List<String> updateAllFailed = const [];
+
+  final _installQueue = <String>[];
+  UpdateResult? _selfPending;
+  BuildContext? _updateAllContext;
+  bool _observing = false;
 
   static Future<String?> _prefsRead() async =>
       (await SharedPreferences.getInstance()).getString(prefsKey);
@@ -430,29 +486,173 @@ class OtherAppsController extends ChangeNotifier {
       return _browse(release?.page ?? app.releasesPage);
     }
     if (s.downloading) return OtherAppAction.installing;
-    Uri? from = Uri.parse(url);
-    if (url.startsWith('https://api.github.com/')) {
-      final token = await this.token();
-      from =
-          token == null ? null : await downloader.signedAssetUrl(from, token);
-    }
-    if (from == null) return _browse(release.page);
-    _set(app, s.copyWith(downloading: true, clearProgress: true));
-    final name = 'app-${app.appId}-${release.build}.apk';
-    final path = await downloader.download(
-      from,
-      name,
-      onProgress: (f) => _set(app, stateOf(app).copyWith(progress: f)),
-    );
-    _set(app, stateOf(app).copyWith(downloading: false, clearProgress: true));
-    if (path == null) return OtherAppAction.failed;
-    final staged = await _stageApk(path);
+    final (staged, noAccess) = await _downloadStaged(app);
+    if (noAccess) return _browse(release.page);
     if (staged == null) return OtherAppAction.failed;
     return switch (await platform.installApk(staged)) {
       'ok' => OtherAppAction.installing,
       'needs-permission' => OtherAppAction.needsPermission,
       _ => OtherAppAction.failed,
     };
+  }
+
+  /// Downloads [app]'s newest APK (silently, resumed after an interruption,
+  /// tried a few times) and stages it for Android's installer. `noAccess`:
+  /// a private app without a token that can read it.
+  Future<(String? staged, bool noAccess)> _downloadStaged(
+    MfficiencyApp app,
+  ) async {
+    final release = stateOf(app).release;
+    final url = release?.apkUrl;
+    if (release == null || url == null) return (null, false);
+    _set(app, stateOf(app).copyWith(downloading: true, clearProgress: true));
+    try {
+      final name = 'app-${app.appId}-${release.build}.apk';
+      for (var attempt = 0; attempt < 3; attempt++) {
+        // A fresh link each try: GitHub's signed asset links expire.
+        Uri? from = Uri.parse(url);
+        if (url.startsWith('https://api.github.com/')) {
+          final token = await this.token();
+          from = token == null
+              ? null
+              : await downloader.signedAssetUrl(from, token);
+          if (from == null && token == null) return (null, true);
+        }
+        if (from != null) {
+          final path = await downloader.download(
+            from,
+            name,
+            onProgress: (f) => _set(app, stateOf(app).copyWith(progress: f)),
+          );
+          if (path != null) return (await _stageApk(path), false);
+        }
+        await Future<void>.delayed(retryWait * (attempt + 1));
+      }
+      return (null, false);
+    } finally {
+      _set(app, stateOf(app).copyWith(downloading: false, clearProgress: true));
+    }
+  }
+
+  /// Between the tries of a cut-off download (it continues where it
+  /// stopped).
+  @visibleForTesting
+  static Duration retryWait = const Duration(seconds: 5);
+
+  // ── Update all ─────────────────────────────────────────────────────────
+
+  /// About › Update all: every installed Mfficiency app with a newer
+  /// release (and this app, through [selfUpdates], last) downloads
+  /// silently, one after another; then Android's installer opens for the
+  /// first, and for the next each time the user comes back from it. Android
+  /// asks once per app; nothing installs without that tap.
+  Future<UpdateAllOutcome> updateAll(BuildContext context) async {
+    if (updateAllProgress.value != null) return UpdateAllOutcome.running;
+    if (!platform.isSupported) return UpdateAllOutcome.unsupported;
+    updateAllProgress.value = const UpdateAllProgress(done: 0, total: 0);
+    updateAllFailed = const [];
+    try {
+      final self = selfUpdates;
+      // Also starts this app's own silent download.
+      final selfCheck = self?.check();
+      await load(force: true);
+      final others = [
+        for (final a in apps)
+          if (stateOf(a).hasUpdate && stateOf(a).release?.apkUrl != null) a,
+      ];
+      final selfResult = await selfCheck;
+      final selfNew =
+          selfResult?.status == UpdateStatus.available ? selfResult : null;
+      final total = others.length + (selfNew == null ? 0 : 1);
+      if (total == 0) return UpdateAllOutcome.upToDate;
+      final failedNames = <String>[];
+      var done = 0;
+      for (final app in others) {
+        updateAllProgress.value = UpdateAllProgress(
+          done: done,
+          total: total,
+          current: app.name,
+        );
+        final (staged, _) = await _downloadStaged(app);
+        if (staged == null) {
+          failedNames.add(app.name);
+        } else {
+          _installQueue.add(staged);
+        }
+        done++;
+      }
+      updateAllFailed = failedNames;
+      _selfPending = selfNew;
+      _updateAllContext = context;
+      if (_installQueue.isEmpty && _selfPending == null) {
+        return UpdateAllOutcome.started; // every download failed
+      }
+      if (!_observing) {
+        WidgetsBinding.instance.addObserver(this);
+        _observing = true;
+      }
+      return await _nextInstall();
+    } finally {
+      if (_installQueue.isEmpty && _selfPending == null) _endUpdateAll();
+    }
+  }
+
+  /// Opens Android's installer for the next queued app; this app last.
+  Future<UpdateAllOutcome> _nextInstall() async {
+    if (_installQueue.isNotEmpty) {
+      updateAllProgress.value = UpdateAllProgress(
+        done: 0,
+        total: 0,
+        installing: true,
+        left: _installQueue.length + (_selfPending == null ? 0 : 1),
+      );
+      final path = _installQueue.first;
+      final outcome = await platform.installApk(path);
+      if (outcome == 'needs-permission') {
+        return UpdateAllOutcome.needsPermission; // the same one when back
+      }
+      _installQueue.removeAt(0); // opened (or failed): the next one
+      if (outcome != 'ok') return _nextInstall();
+      return UpdateAllOutcome.started;
+    }
+    final self = _selfPending;
+    _selfPending = null;
+    final context = _updateAllContext;
+    _endUpdateAll();
+    if (self != null && context != null && context.mounted) {
+      await selfUpdates?.install(context, self);
+    }
+    return UpdateAllOutcome.started;
+  }
+
+  void _endUpdateAll() {
+    _installQueue.clear();
+    _selfPending = null;
+    _updateAllContext = null;
+    updateAllProgress.value = null;
+    if (_observing) {
+      WidgetsBinding.instance.removeObserver(this);
+      _observing = false;
+    }
+  }
+
+  /// Back from Android's installer: the next app's turn.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(refreshInstalled());
+    if (_installQueue.isEmpty && _selfPending == null) {
+      _endUpdateAll(); // back from the last one
+      return;
+    }
+    unawaited(_nextInstall());
+  }
+
+  @override
+  void dispose() {
+    _endUpdateAll();
+    updateAllProgress.dispose();
+    super.dispose();
   }
 
   /// Opens an installed app.

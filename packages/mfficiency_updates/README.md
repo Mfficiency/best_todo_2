@@ -208,6 +208,25 @@ await updates.init();                 // before the first frame (no network)
 updates.start(context);
 ```
 
+### Interrupted downloads
+
+A download that is cut off continues where it stopped (`.part`, Range
+request). It starts again by itself: in the app after 10 s, 30 s, 1, 2 and
+then every 5 minutes, at once when the app comes back, and in the
+background: a cut-off download, or leaving the app while one runs, has
+Android run the background entry point (below) once a network is there,
+again with back-off while the APK is still incomplete. A lock file
+(`<name>.part.lock`) keeps the app and the background job from writing the
+same file.
+
+### Update all (About)
+
+`OtherAppsLink` ends with "Update all apps" (`UpdateAllTile`): every
+installed Mfficiency app with a newer release downloads, then Android's
+installer opens for one after the other (the next when the user comes
+back from it), this app last. Hand the app's own controller over:
+`otherApps.selfUpdates = updates;`.
+
 ### Background check (every hour while the app is closed)
 
 Android's JobScheduler (`UpdateCheckJob`, scheduled by `start()` while

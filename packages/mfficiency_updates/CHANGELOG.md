@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.12.0 - 2026-11-05
+
+- **Interrupted downloads start again by themselves:** in the app after
+  10 s, 30 s, 1, 2 and then every 5 minutes (`UpdateController.retryDelays`),
+  at once when the app comes back, and in the background: a cut-off
+  download, or leaving the app while one runs, schedules a one-off job
+  (`UpdatePlatform.scheduleDownloadResume`, Android `UpdateCheckJob`) that
+  runs once a network is there and, while the APK is still `incomplete`,
+  again with back-off; each try continues the `.part`.
+- **One writer at a time:** `<name>.part.lock`, touched every few seconds
+  while downloading (`IoApkDownloader.lockStale`, 30 s), so the app and the
+  background job never write the same file.
+- **Update all** (About, under Other apps): `UpdateAllTile` in
+  `OtherAppsLink`, `OtherAppsController.updateAll`: every installed
+  Mfficiency app with a newer release downloads (three tries each), then
+  Android's installer opens for one after the other (the next when the user
+  is back), this app last (`OtherAppsController.selfUpdates`). New
+  `OtherAppsStrings.updateAll*` texts.
+- Staged APKs of other apps stay a day, so several can wait for Android's
+  installer at once.
+
 ## 1.11.0 - 2026-11-05
 
 - **The same update checks in every app:** every time the app opens

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.0] - 2026-11-05
+- Updates: a download that is cut off (no network, the app closed or put away) starts again by itself, in the app within seconds and in the background once there is a network, and continues where it stopped
+- About › Update all apps: updates this app and every other Mfficiency app on the phone in one go. The newest versions download in the background, then Android asks for each app, one after the other
+
 ## [0.3.0] - 2026-11-05
 - Updates: checks for a new version every time you open the app, every 5 minutes while you use it, when you come back to it after a minute or more, and every hour while it is closed. A new version found while the app is closed downloads quietly; Android asks "Update this app?" the next time you open it
 

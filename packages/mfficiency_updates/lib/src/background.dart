@@ -40,7 +40,9 @@ abstract final class UpdateBackground {
     try {
       final controller = await build();
       final r = await controller.checkInBackground();
-      outcome = r.status.name;
+      // "incomplete": Android runs the job again soon (with back-off) and
+      // the download continues where it stopped.
+      outcome = controller.downloadIncomplete ? 'incomplete' : r.status.name;
     } catch (e) {
       outcome = 'error: $e';
     } finally {

@@ -12,6 +12,13 @@ import 'downloader.dart';
 /// stays and the next download of the same file continues it with a Range
 /// request (`If-Range` with the ETag or Last-Modified seen first, so a
 /// replaced file starts over instead of being glued to the old one).
+///
+/// One writer at a time: while a download runs, `<name>.part.lock` is
+/// touched every few seconds. The app and its background job
+/// (`UpdateCheckJob`) can both download the same build; the second one
+/// sees a fresh lock and gives up at once (null, like an interruption: the
+/// caller tries again later). A lock older than [lockStale] is left over
+/// from a process Android stopped and is taken over.
 class IoApkDownloader extends ApkDownloader {
   IoApkDownloader({
     Future<String> Function()? directory,
@@ -19,7 +26,11 @@ class IoApkDownloader extends ApkDownloader {
     this.responseTimeout = const Duration(seconds: 30),
     this.idleTimeout = const Duration(seconds: 60),
     this.userAgent,
+    this.lockStale = const Duration(seconds: 30),
   }) : _directory = directory;
+
+  /// A lock touched longer ago than this belongs to nobody any more.
+  final Duration lockStale;
 
   /// Sent as `User-Agent` (null: dart:io's own).
   final String? userAgent;
@@ -51,14 +62,28 @@ class IoApkDownloader extends ApkDownloader {
     void Function(double? fraction)? onProgress,
   }) async {
     final client = _client();
+    Timer? heartbeat;
+    File? held;
     try {
       final dir = await _dir();
       dir.createSync(recursive: true);
       final part = File('${dir.path}/$fileName.part');
       final meta = File('${dir.path}/$fileName.part.meta');
+      final lock = File('${dir.path}/$fileName.part.lock');
+      if (_heldByOther(lock)) return null; // the other one finishes it
+      lock.writeAsStringSync('$pid');
+      held = lock;
+      heartbeat = Timer.periodic(
+        Duration(seconds: (lockStale.inSeconds ~/ 6).clamp(1, 10)),
+        (_) => _touch(lock),
+      );
       // Only this file's partial download stays; other builds' go. By name:
       // listSync's paths use the platform separator ("\\" on Windows).
-      final keep = {'$fileName.part', '$fileName.part.meta'};
+      final keep = {
+        '$fileName.part',
+        '$fileName.part.meta',
+        '$fileName.part.lock',
+      };
       for (final f in dir.listSync()) {
         if (!keep.contains(f.path.split(RegExp(r'[\\/]')).last)) {
           f.deleteSync(recursive: true);
@@ -79,7 +104,33 @@ class IoApkDownloader extends ApkDownloader {
     } on Object {
       return null;
     } finally {
+      heartbeat?.cancel();
+      try {
+        if (held != null && held.existsSync()) held.deleteSync();
+      } on Object {
+        // gone already
+      }
       client.close(force: true);
+    }
+  }
+
+  /// Another download (the app, or its background job) is writing this
+  /// file right now.
+  bool _heldByOther(File lock) {
+    try {
+      if (!lock.existsSync()) return false;
+      final age = DateTime.now().difference(lock.lastModifiedSync());
+      return age < lockStale;
+    } on Object {
+      return false;
+    }
+  }
+
+  static void _touch(File lock) {
+    try {
+      lock.setLastModifiedSync(DateTime.now());
+    } on Object {
+      // the folder was cleared: nothing to keep alive
     }
   }
 

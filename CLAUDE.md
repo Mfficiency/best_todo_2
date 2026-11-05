@@ -127,7 +127,8 @@ file is the short operational guide.
   `ACTION_INSTALL_PACKAGE` to the installer, a PackageInstaller session as fallback) asks
   the only question and ends with "App updated" + Open — in the foreground, once per build and start; a
   cancel leaves the slim `UpdateBanner` ("Update ready" + Install), a failed download one
-  with Try again. Pull-down on the Changelog checks; tapping a version there offers it
+  with Try again (and it is tried again by itself: 10 s … every 5 min while open, at once on
+  resume, and by the package's background job once there is a network). Pull-down on the Changelog checks; tapping a version there offers it
   (older = rollback). `MainActivity`/the manifest have no update code (the plugin brings
   `REQUEST_INSTALL_PACKAGES`, its receiver and channel; registered by Flutter). Tests fake
   it with `test/update/update_fakes.dart` (`fakeController` = `controllerFor` on fakes; the
@@ -141,7 +142,9 @@ file is the short operational guide.
   (`claude setup-token`) or `ANTHROPIC_API_KEY`.
 - Other apps (SPEC.md §11): the last item of About is the package's `OtherAppsLink` →
   `OtherAppsPage` (every other Mfficiency app: installed or not, newest release, Install /
-  Update / Open). One `OtherAppsController`, `AppUpdates.otherApps`
+  Update / Open), ending with **Update all apps** (package 1.12.0: every installed app with a
+  newer release, then Android's installer one after the other, BestToDo last through
+  `selfUpdates`). One `OtherAppsController`, `AppUpdates.otherApps`
   (`lib/services/app_updates.dart`), on the updater's own `http`/`platform`, with the
   problem-report token as `fallbackToken` for the private apps.
 - Test results shown in-app come from `assets/test_report.json`, packaged into every
