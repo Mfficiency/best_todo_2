@@ -261,4 +261,93 @@ void main() {
     expect(http.requests.first.$2['Authorization'], 'Bearer kept');
     c.dispose();
   });
+
+  group('interrupted downloads', () {
+    testWidgets('are tried again by themselves while the app is open',
+        (tester) async {
+      downloader.fail = true;
+      final c = await controller();
+      c.start(await app(tester));
+      await run(tester);
+      expect(c.failed.value?.key, '99.0.0+100');
+      expect(downloader.urls, hasLength(1));
+      // Back online: the next try, 10 s later, finishes it.
+      downloader.fail = false;
+      await run(tester, const Duration(seconds: 10));
+      expect(downloader.urls, hasLength(2));
+      expect(c.ready.value, '99.0.0+100');
+      expect(c.failed.value, isNull);
+      expect(native.installs, hasLength(1), reason: 'Android asks as usual');
+      c.dispose();
+    });
+
+    testWidgets('keep trying with longer waits', (tester) async {
+      downloader.fail = true;
+      final c = await controller();
+      c.start(await app(tester));
+      await run(tester);
+      await run(tester, const Duration(seconds: 10));
+      expect(downloader.urls, hasLength(2));
+      await run(tester, const Duration(seconds: 29));
+      expect(downloader.urls, hasLength(2), reason: 'the second wait is 30 s');
+      await run(tester, const Duration(seconds: 1));
+      expect(downloader.urls, hasLength(3));
+      c.dispose();
+    });
+
+    testWidgets('are handed to the background job', (tester) async {
+      downloader.fail = true;
+      final c = await controller();
+      c.start(await app(tester));
+      await run(tester);
+      expect(
+        native.calls.where((m) => m.method == 'scheduleDownloadResume'),
+        isNotEmpty,
+      );
+      c.dispose();
+    });
+
+    testWidgets('leaving the app mid-download hands it over too',
+        (tester) async {
+      final c = await controller();
+      c.start(await app(tester));
+      c.downloading.value = true; // as if the APK were still coming
+      native.calls.clear();
+      c.handlePause();
+      await run(tester);
+      expect(
+        native.calls.map((m) => m.method),
+        containsAll(['scheduleBackgroundCheck', 'scheduleDownloadResume']),
+      );
+      c.dispose();
+    });
+
+    testWidgets('coming back tries a failed download at once',
+        (tester) async {
+      downloader.fail = true;
+      final c = await controller();
+      c.start(await app(tester));
+      await run(tester);
+      expect(downloader.urls, hasLength(1));
+      downloader.fail = false;
+      c.handleResume();
+      await run(tester);
+      expect(downloader.urls, hasLength(2));
+      expect(c.ready.value, '99.0.0+100');
+      c.dispose();
+    });
+
+    test('in the background: an incomplete APK says so (the job runs again)',
+        () async {
+      downloader.fail = true;
+      final c = await controller();
+      await c.checkInBackground();
+      expect(c.downloadIncomplete, isTrue);
+      expect(native.installs, isEmpty);
+      downloader.fail = false;
+      await c.checkInBackground();
+      expect(c.downloadIncomplete, isFalse);
+      c.dispose();
+    });
+  });
 }

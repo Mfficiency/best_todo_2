@@ -387,6 +387,13 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     return r;
   }
 
+  /// After [checkInBackground]: a newer build was found but its APK isn't
+  /// complete yet (the background job runs again to continue it).
+  bool get downloadIncomplete =>
+      result.value?.status == UpdateStatus.available &&
+      ready.value != result.value?.key &&
+      isApkUrl(result.value?.url);
+
   /// Running in the background engine: no installer, no messages.
   bool _background = false;
 
@@ -459,6 +466,67 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) handleResume();
+    if (state == AppLifecycleState.paused) handlePause();
+  }
+
+  /// The app left the screen: a download still running keeps going while
+  /// Android lets the app live, and the background job is asked to continue
+  /// it (from where it stopped) in case Android stops the app.
+  @visibleForTesting
+  void handlePause() {
+    if (_started && (downloading.value || failed.value != null)) {
+      unawaited(_resumeDownloadInBackground());
+    }
+  }
+
+  /// Has Android run the background entry point soon (with a network,
+  /// retried with back-off) to finish an interrupted download. Needs
+  /// [UpdateConfig.backgroundCheck] and "check automatically".
+  Future<void> _resumeDownloadInBackground() async {
+    if (config.backgroundCheck == null ||
+        !platform.isSupported ||
+        !config.autoCheck() ||
+        _background) {
+      return;
+    }
+    await _scheduleBackground(on: true); // the stored entry point and token
+    await platform.scheduleDownloadResume();
+    _log(UpdateLogLevel.debug, 'update.download_handed_over', {});
+  }
+
+  // ── Retries ────────────────────────────────────────────────────────────
+
+  /// Waits between the automatic tries of an interrupted download while
+  /// the app is open; the last one repeats.
+  static const retryDelays = [
+    Duration(seconds: 10),
+    Duration(seconds: 30),
+    Duration(minutes: 1),
+    Duration(minutes: 2),
+    Duration(minutes: 5),
+  ];
+
+  Timer? _retry;
+  int _retries = 0;
+
+  /// A download was cut off (no network, server gone, the app's background
+  /// job holding the file): tried again by itself after [retryDelays] while
+  /// the app is open, and handed to the background job as well.
+  void _scheduleRetry(UpdateResult r) {
+    _retry?.cancel();
+    if (_background || !config.autoCheck()) return;
+    final wait = retryDelays[_retries.clamp(0, retryDelays.length - 1)];
+    _retries++;
+    _log(UpdateLogLevel.debug, 'update.download_retry', {
+      'version': r.key,
+      'inSeconds': wait.inSeconds,
+    });
+    _retry = Timer(wait, () {
+      if (result.value?.key != r.key) return; // a newer one took over
+      if (!_inForeground) return; // the background job continues it
+      unawaited(_downloadInBackground(r, retry: true));
+    });
+    unawaited(_resumeDownloadInBackground());
   }
 
   /// Back in the app: after the "install unknown apps" switch the install
@@ -468,6 +536,13 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   @visibleForTesting
   void handleResume() {
     _resumed.value++;
+    final f = failed.value;
+    if (_started && f != null) {
+      if (result.value?.key == f.key && config.autoCheck()) {
+        _retry?.cancel();
+        unawaited(_downloadInBackground(f, retry: true));
+      }
+    }
     if (_started &&
         config.checkOnResume &&
         _isDue(config.resumeCheckAfter)) {
@@ -778,6 +853,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _downloadInBackground(
     UpdateResult r, {
     bool user = false,
+    bool retry = false,
   }) async {
     if (r.status != UpdateStatus.available ||
         !platform.isSupported ||
@@ -788,9 +864,10 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       _wantInstall = r.key;
     } else if (!config.autoCheck() ||
         r.key == ready.value ||
-        r.key == failed.value?.key) {
+        (!retry && r.key == failed.value?.key && _retry != null)) {
       return;
     }
+    if (user) _retry?.cancel();
     failed.value = null;
     final path = await _fetchApk(r);
     // A newer build came out meanwhile: its own check downloads that one.
@@ -798,8 +875,13 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     if (path == null) {
       failed.value = r; // the banner's Try again downloads it again
       if (user) _message((s) => s.installFailed);
+      // Tried again by itself: soon in the app, and by the background job.
+      _scheduleRetry(r);
       return;
     }
+    _retry?.cancel();
+    _retry = null;
+    _retries = 0;
     if (ready.value != r.key) {
       _log(UpdateLogLevel.info, 'update.ready', {'version': r.key});
     }
@@ -979,6 +1061,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _stopPolling();
+    _retry?.cancel();
     _firstCheck?.cancel();
     config.autoCheckChanges?.removeListener(autoCheckChanged);
     promptAllowed?.removeListener(_promptAllowedChanged);

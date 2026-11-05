@@ -199,4 +199,31 @@ void main() {
     expect(seen.single.value('authorization'), 'Bearer tok');
     expect(seen.single.value('accept'), 'application/octet-stream');
   });
+
+  group('one writer at a time (the app and its background job)', () {
+    test('a fresh lock: the other one is writing, so nothing happens',
+        () async {
+      File('${dir.path}/App.apk.part.lock').writeAsStringSync('1');
+      expect(await downloader.download(server.url, 'App.apk'), isNull);
+      expect(server.requests, isEmpty, reason: 'not even asked');
+    });
+
+    test('a stale lock (its process was stopped) is taken over', () async {
+      File('${dir.path}/App.apk.part.lock')
+        ..writeAsStringSync('1')
+        ..setLastModifiedSync(
+            DateTime.now().subtract(const Duration(minutes: 5)));
+      final path = await downloader.download(server.url, 'App.apk');
+      expect(path, '${dir.path}/App.apk');
+      expect(files(), ['App.apk'], reason: 'the lock is gone afterwards');
+    });
+
+    test('the lock goes when a download is cut off too', () async {
+      server.cutAfter = 400;
+      expect(await downloader.download(server.url, 'App.apk'), isNull);
+      expect(files(), ['App.apk.part', 'App.apk.part.meta']);
+      expect(await downloader.download(server.url, 'App.apk'),
+          '${dir.path}/App.apk');
+    });
+  });
 }

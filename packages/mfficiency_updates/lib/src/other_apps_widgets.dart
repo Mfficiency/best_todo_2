@@ -51,6 +51,16 @@ class OtherAppsStrings {
     this.tokenLabel = 'GitHub token',
     this.tokenDialog = const GithubTokenStrings(),
     this.tokenTooltip = 'GitHub token',
+    this.updateAll = 'Update all apps',
+    this.updateAllSubtitle = 'This app and every other Mfficiency app on this '
+        'phone: the newest versions download in the background, then Android '
+        'asks once per app.',
+    this.updateAllChecking = 'Looking for newer versions…',
+    this.updateAllDownloading = _updateAllDownloading,
+    this.updateAllInstalling = _updateAllInstalling,
+    this.updateAllUpToDate = 'Every app is up to date.',
+    this.updateAllFailed = _updateAllFailed,
+    this.updateAllPhoneOnly = 'Updating apps works on the phone.',
   });
 
   final String title;
@@ -77,8 +87,25 @@ class OtherAppsStrings {
   final String tokenLabel;
   final GithubTokenStrings tokenDialog;
   final String tokenTooltip;
+  final String updateAll;
+  final String updateAllSubtitle;
+  final String updateAllChecking;
+  final String Function(String app, int number, int total) updateAllDownloading;
+  final String Function(int left) updateAllInstalling;
+  final String updateAllUpToDate;
+  final String Function(String apps) updateAllFailed;
+  final String updateAllPhoneOnly;
 
   static String _installed(String version) => 'Installed: $version';
+  static String _updateAllDownloading(String app, int number, int total) =>
+      'Downloading $app ($number of $total)…';
+  static String _updateAllInstalling(int left) => left == 1
+      ? 'Android asks next: tap Update there.'
+      : 'Android asks for each app: $left to go. Tap Update there, then come '
+          'back.';
+  static String _updateAllFailed(String apps) =>
+      "Couldn't download $apps. Try again later, or update it under Other "
+      'apps.';
   static String _newest(String release) => 'Newest: $release';
   static String _downloading(int? percent) =>
       percent == null ? 'Downloading…' : 'Downloading… $percent%';
@@ -96,7 +123,15 @@ class OtherAppsLink extends StatelessWidget {
   final OtherAppsStrings strings;
 
   @override
-  Widget build(BuildContext context) => ListTile(
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _link(context),
+          UpdateAllTile(controller: controller, strings: strings),
+        ],
+      );
+
+  Widget _link(BuildContext context) => ListTile(
         key: const Key('otherApps.link'),
         leading: const Icon(Icons.apps),
         title: Text(strings.title),
@@ -109,6 +144,64 @@ class OtherAppsLink extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// About › Update all apps ([OtherAppsController.updateAll]): this app and
+/// every other installed Mfficiency app to its newest version. Shows where
+/// it is while it runs and what happened as a SnackBar.
+class UpdateAllTile extends StatelessWidget {
+  const UpdateAllTile({
+    super.key,
+    required this.controller,
+    this.strings = const OtherAppsStrings(),
+  });
+
+  final OtherAppsController controller;
+  final OtherAppsStrings strings;
+
+  @override
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<UpdateAllProgress?>(
+        valueListenable: controller.updateAllProgress,
+        builder: (context, p, _) => ListTile(
+          key: const Key('otherApps.updateAll'),
+          leading: const Icon(Icons.system_update_alt),
+          title: Text(strings.updateAll),
+          subtitle: Text(switch (p) {
+            null => strings.updateAllSubtitle,
+            UpdateAllProgress(installing: true) =>
+              strings.updateAllInstalling(p.left),
+            UpdateAllProgress(current: final app?) =>
+              strings.updateAllDownloading(app, p.done + 1, p.total),
+            _ => strings.updateAllChecking,
+          }),
+          trailing: p == null
+              ? null
+              : const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+          onTap: p == null ? () => _run(context) : null,
+        ),
+      );
+
+  Future<void> _run(BuildContext context) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final outcome = await controller.updateAll(context);
+    final failed = controller.updateAllFailed;
+    final text = switch (outcome) {
+      UpdateAllOutcome.upToDate => strings.updateAllUpToDate,
+      UpdateAllOutcome.unsupported => strings.updateAllPhoneOnly,
+      UpdateAllOutcome.needsPermission => strings.needsPermission,
+      UpdateAllOutcome.running => null,
+      UpdateAllOutcome.started =>
+        failed.isEmpty ? null : strings.updateAllFailed(failed.join(', ')),
+    };
+    if (text == null) return;
+    messenger
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
 }
 
 /// Every other Mfficiency app: installed or not, its newest release, and

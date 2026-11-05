@@ -326,7 +326,7 @@ class AppUpdates {
             UpdatePlatform(openUrl: ProblemReports.openUrl),
         fallbackToken: () => ProblemReports.instance.token(),
         userAgent: 'BestToDo-other-apps',
-      );
+      )..selfUpdates = controller; // About › Update all apps: this app last
 
   /// After the first frame: Android's install time, the check when due,
   /// polling and the resume check. [context] is above every screen (the

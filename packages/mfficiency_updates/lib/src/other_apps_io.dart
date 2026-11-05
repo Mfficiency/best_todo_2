@@ -8,15 +8,22 @@ Future<String> otherAppsDir() async =>
     '${(await getTemporaryDirectory()).path}/other_apps';
 
 /// Moves a downloaded APK into `<cache>/updates/`, the only folder the
-/// plugin hands to Android's installer; older `app-*` APKs there go.
+/// plugin hands to Android's installer; `app-*` APKs staged more than a day
+/// ago go ("Update all" stages several at once, each waiting for its turn
+/// in Android's installer).
 Future<String?> stageApk(String path) async {
   try {
     final dir = Directory('${(await getTemporaryDirectory()).path}/updates')
       ..createSync(recursive: true);
     final name = path.split(Platform.pathSeparator).last;
+    final old = DateTime.now().subtract(const Duration(days: 1));
     for (final f in dir.listSync().whereType<File>()) {
       final n = f.path.split(Platform.pathSeparator).last;
-      if (n.startsWith('app-') && n != name) f.deleteSync();
+      if (n.startsWith('app-') &&
+          n != name &&
+          f.lastModifiedSync().isBefore(old)) {
+        f.deleteSync();
+      }
     }
     return File(path).renameSync('${dir.path}/$name').path;
   } on Object {

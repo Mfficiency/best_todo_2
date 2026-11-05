@@ -304,4 +304,155 @@ void main() {
           reason: 'asked again with the new token');
     });
   });
+
+  group('Update all (About)', () {
+    setUp(() {
+      OtherAppsController.retryWait = Duration.zero;
+      token = 't';
+      installed['com.mfficiency.best_music'] = {
+        'versionName': '0.3.0',
+        'versionCode': 1,
+      };
+      installed['com.mfficiency.best_collage'] = {
+        'versionName': '0.4.0',
+        'versionCode': 1,
+      };
+      http.answers['Mfficiency/BestMusic'] = [
+        asset('music-v0.4.0-5', 'Mfficiency/BestMusic'),
+      ];
+      http.answers['Mfficiency/BestCollage'] = [
+        asset('v0.5.0-5', 'Mfficiency/BestCollage'),
+      ];
+    });
+
+    Future<BuildContext> page(WidgetTester tester) async {
+      late BuildContext context;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: Builder(builder: (c) {
+          context = c;
+          return const SizedBox();
+        })),
+      ));
+      return context;
+    }
+
+    List<MethodCall> installs() =>
+        calls.where((c) => c.method == 'installApk').toList();
+
+    testWidgets('downloads every installed app with an update, then Android '
+        'asks for one after the other', (tester) async {
+      final c = controller();
+      final outcome = await tester.runAsync(() async {
+        return c.updateAll(await page(tester));
+      });
+      expect(outcome, UpdateAllOutcome.started);
+      expect(staged, hasLength(2), reason: 'Best Music and BestCollage');
+      expect(installs(), hasLength(1), reason: 'one installer at a time');
+      expect(c.updateAllProgress.value?.installing, isTrue);
+      expect(c.updateAllProgress.value?.left, 2, reason: 'this one and the next');
+
+      // Back from Android's installer: the next one.
+      await tester.runAsync(() async {
+        c.didChangeAppLifecycleState(AppLifecycleState.resumed);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      expect(installs(), hasLength(2));
+      expect(installs().last.arguments['path'], contains('best_collage'));
+      await tester.runAsync(() async {
+        c.didChangeAppLifecycleState(AppLifecycleState.resumed);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      expect(installs(), hasLength(2));
+      expect(c.updateAllProgress.value, isNull, reason: 'done');
+      c.dispose();
+    });
+
+    testWidgets('nothing newer: says every app is up to date',
+        (tester) async {
+      http.answers.clear();
+      final c = controller();
+      final outcome = await tester.runAsync(() async {
+        return c.updateAll(await page(tester));
+      });
+      expect(outcome, UpdateAllOutcome.upToDate);
+      expect(installs(), isEmpty);
+      expect(c.updateAllProgress.value, isNull);
+      c.dispose();
+    });
+
+    testWidgets('a download that keeps failing is named; the others go on',
+        (tester) async {
+      final c = controller();
+      var n = 0;
+      downloader.fail = false;
+      final failing = _FailFor(downloader, (name) {
+        n++;
+        return name.contains('best_music');
+      });
+      final c2 = OtherAppsController(
+        http: http,
+        downloader: failing,
+        platform: UpdatePlatform(supported: true),
+        readToken: () async => token,
+        stageApk: (path) async => '/cache/updates/${path.split('/').last}',
+      );
+      final outcome = await tester.runAsync(() async {
+        return c2.updateAll(await page(tester));
+      });
+      expect(outcome, UpdateAllOutcome.started);
+      expect(c2.updateAllFailed, ['Best Music']);
+      expect(n, 4, reason: 'Best Music three times, BestCollage once');
+      expect(installs(), hasLength(1));
+      expect(installs().single.arguments['path'], contains('best_collage'));
+      c.dispose();
+      c2.dispose();
+    });
+
+    testWidgets('off a phone: says so', (tester) async {
+      final c = controller(phone: false);
+      final outcome = await tester.runAsync(() async {
+        return c.updateAll(await page(tester));
+      });
+      expect(outcome, UpdateAllOutcome.unsupported);
+      c.dispose();
+    });
+
+    testWidgets('the About row runs it and shows the result', (tester) async {
+      http.answers.clear();
+      final c = controller();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: OtherAppsLink(controller: c)),
+      ));
+      expect(find.text('Update all apps'), findsOneWidget);
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const Key('otherApps.updateAll')));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pump();
+      expect(find.text('Every app is up to date.'), findsOneWidget);
+      c.dispose();
+    });
+  });
+}
+
+/// Fails the downloads whose file name [fails] picks.
+class _FailFor extends ApkDownloader {
+  _FailFor(this.inner, this.fails);
+  final FakeDownloader inner;
+  final bool Function(String name) fails;
+
+  @override
+  Future<String?> download(Uri url, String fileName,
+          {void Function(double? fraction)? onProgress}) async =>
+      fails(fileName) ? null : inner.download(url, fileName);
+
+  @override
+  bool exists(String path) => inner.exists(path);
+
+  @override
+  Future<String?> downloaded(String fileName) => inner.downloaded(fileName);
+
+  @override
+  Future<Uri?> signedAssetUrl(Uri assetApiUrl, String token) =>
+      inner.signedAssetUrl(assetApiUrl, token);
 }

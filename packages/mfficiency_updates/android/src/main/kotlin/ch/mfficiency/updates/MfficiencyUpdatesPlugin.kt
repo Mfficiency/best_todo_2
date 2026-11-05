@@ -122,6 +122,7 @@ class MfficiencyUpdatesPlugin :
                     result.success(null)
                 }
                 "backgroundToken" -> result.success(TokenVault.read(context))
+                "scheduleDownloadResume" -> result.success(UpdateCheckJob.scheduleResume(context))
                 "openUrl" -> result.success(
                     start(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url")!!))),
                 )

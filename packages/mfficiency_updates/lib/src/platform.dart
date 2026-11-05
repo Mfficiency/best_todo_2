@@ -140,6 +140,12 @@ class UpdatePlatform {
       }) ??
       false;
 
+  /// Has Android run the background check soon, once a network is there,
+  /// to finish an interrupted download (retried with back-off until it is
+  /// complete). Needs [scheduleBackgroundCheck] first (the entry point).
+  Future<bool> scheduleDownloadResume() async =>
+      await _call<bool>('scheduleDownloadResume') ?? false;
+
   /// The token handed to [scheduleBackgroundCheck], for the background run.
   Future<String?> backgroundToken() => _call<String>('backgroundToken');
 
