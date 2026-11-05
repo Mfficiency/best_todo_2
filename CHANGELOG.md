@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.1] - 2026-11-05
+- Security check of every library the app uses: none is compromised or has a known vulnerability. Changelog and What's new now use flutter_markdown_plus, the maintained successor of flutter_markdown. Obsidian plugin: its build and test tools updated past known security problems (esbuild, handlebars, brace-expansion, js-yaml, moment)
+
 ## [0.4.0] - 2026-11-05
 - Updates: a download that is cut off (no network, the app closed or put away) starts again by itself, in the app within seconds and in the background once there is a network, and continues where it stopped
 - About › Update all apps: updates this app and every other Mfficiency app on the phone in one go. The newest versions download in the background, then Android asks for each app, one after the other
