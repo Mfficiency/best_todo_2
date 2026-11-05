@@ -49,13 +49,14 @@ void main() {
   }
 
   group('config', () {
-    test('one public repo, tag prefix v, every 15 minutes', () {
+    test('one public repo, tag prefix v, the shared timing', () {
       final c =
           AppUpdates.config(UpdatesApp.todo, version: '0.2.106', build: 9);
       expect(c.githubRepo, 'Mfficiency/best_todo_2');
       expect(c.privateRepo, isFalse, reason: 'no token: the repo is public');
-      expect(c.pollInterval, const Duration(minutes: 15));
-      expect(c.checkInterval, const Duration(minutes: 15));
+      expect(c.pollInterval, const Duration(minutes: 5));
+      expect(c.checkInterval, Duration.zero);
+      expect(c.backgroundInterval, const Duration(hours: 1));
       expect(c.includePrereleases(), isTrue,
           reason: 'dev/staging builds are prereleases of the same app');
       expect(c.tagPrefix, 'v');
@@ -72,9 +73,14 @@ void main() {
     test("the package's behaviour is left at its defaults", () {
       for (final app in UpdatesApp.values) {
         final c = AppUpdates.config(app, version: '0.2.106', build: 9);
-        expect(c.checkOnResume, isTrue,
-            reason: 'back in the app after 15 minutes: a check');
-        expect(c.dueAfter, AppUpdates.interval);
+        // Every start, every 5 minutes open, back after a minute, hourly
+        // while closed: the same in every Mfficiency app.
+        expect(c.checkOnResume, isTrue);
+        expect(c.checkInterval, Duration.zero);
+        expect(c.pollInterval, const Duration(minutes: 5));
+        expect(c.resumeCheckAfter, const Duration(minutes: 1));
+        expect(c.backgroundInterval, const Duration(hours: 1));
+        expect(c.backgroundCheck, same(updateCheckInBackground));
         expect(c.requireApk, isTrue,
             reason: 'a release whose APK is still uploading is not offered');
         expect(c.strictTags, isFalse);

@@ -3,6 +3,7 @@
 /// Claude fixes. See README.md.
 library;
 
+export 'src/background.dart';
 export 'src/backup.dart';
 export 'src/config.dart';
 export 'src/controller.dart';

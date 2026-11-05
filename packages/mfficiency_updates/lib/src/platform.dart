@@ -122,4 +122,28 @@ class UpdatePlatform {
 
   /// Closes the app and starts it again (after a restore).
   Future<void> restartApp() => _call<void>('restartApp');
+
+  /// Has Android run the background entry point [handle]
+  /// ([UpdateBackground]) every [every] while the app is closed, with a
+  /// network, also after a reboot. Scheduling again replaces it. [token]
+  /// (the GitHub token, for a private repo) is kept for that run,
+  /// encrypted with a key in Android's keystore; null removes it.
+  Future<bool> scheduleBackgroundCheck(
+    int handle,
+    Duration every, {
+    String? token,
+  }) async =>
+      await _call<bool>('scheduleBackgroundCheck', {
+        'handle': handle,
+        'minutes': every.inMinutes,
+        'token': token,
+      }) ??
+      false;
+
+  /// The token handed to [scheduleBackgroundCheck], for the background run.
+  Future<String?> backgroundToken() => _call<String>('backgroundToken');
+
+  /// Stops the background check ("check automatically" turned off).
+  Future<void> cancelBackgroundCheck() =>
+      _call<void>('cancelBackgroundCheck');
 }

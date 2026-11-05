@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.11.0 - 2026-11-05
+
+- **The same update checks in every app:** every time the app opens
+  (`checkInterval` now defaults to zero), every 5 minutes while it is open
+  (`pollInterval` default 5 min), when it comes back after a minute or more
+  (new `resumeCheckAfter`, 1 min; before: `dueAfter`) and **every hour
+  while it is closed**.
+- **Background check** (`UpdateConfig.backgroundCheck`,
+  `backgroundInterval`, `UpdateBackground`, `UpdateController.checkInBackground`,
+  Android `UpdateCheckJob` + `RECEIVE_BOOT_COMPLETED`): JobScheduler runs the
+  app's entry point in a headless engine; it checks and downloads silently,
+  never opens the installer, is skipped while the app is open and stopped
+  when it opens. `start()` schedules it while "check automatically" is on.
+- `UpdatePlatform.scheduleBackgroundCheck` / `cancelBackgroundCheck`.
+
 ## 1.10.0 - 2026-10-30
 
 - **One GitHub token dialog** (`GithubTokenDialog`, `GithubTokenStrings`)
