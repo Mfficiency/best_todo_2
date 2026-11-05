@@ -338,7 +338,7 @@ void main() {
           .httpUserAgent,
       'X/1',
     );
-    expect(c.dueAfter, const Duration(hours: 24));
+    expect(c.dueAfter, const Duration(minutes: 5), reason: 'polls by default');
     expect(
       const UpdateConfig(
         appName: 'A',

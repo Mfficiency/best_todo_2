@@ -50,6 +50,26 @@ enum UpdatesApp {
 /// * the update prefs from before the package ([migrateLegacyState]);
 /// * About › Other apps ([otherApps], the package's
 ///   [OtherAppsController]) on the same HTTP client and platform.
+/// The update check while the app is closed: Android runs it every hour
+/// (package README.md › Background check). Loads the settings and the
+/// version like `main()`, then only checks and downloads; Android's
+/// "Update this app?" (and the backup before it) waits until BestToDo is
+/// opened.
+@pragma('vm:entry-point')
+Future<void> updateCheckInBackground() => UpdateBackground.run(() async {
+      await Config.load();
+      await Config.ensureVersionLoaded();
+      final prefs = await SharedPreferences.getInstance();
+      final c = AppUpdates.controllerFor(
+        UpdatesApp.todo,
+        version: Config.version,
+        build: int.tryParse(Config.buildNumber) ?? 0,
+        store: SharedPreferencesUpdateStore(prefs),
+      );
+      await c.init();
+      return c;
+    });
+
 class AppUpdates {
   AppUpdates._();
 
@@ -99,11 +119,6 @@ class AppUpdates {
       await secureStorage.write(key: tokenKey, value: t);
     }
   }
-
-  /// How often a running app checks (and how old the last check may be at
-  /// start or when it comes back): GitHub's anonymous API allows 60
-  /// requests/hour/IP.
-  static const Duration interval = Duration(minutes: 15);
 
   /// The running app's updates; null until [create] ran (tests set it,
   /// pages without one show no update UI).
@@ -179,8 +194,10 @@ class AppUpdates {
         tokenProvider: readToken,
         tagPrefix: app.tagPrefix,
         autoCheck: () => Config.autoUpdateCheckEnabled,
-        checkInterval: interval,
-        pollInterval: interval,
+        // When it checks is the package's default, the same in every
+        // Mfficiency app: every start, every 5 minutes while open, after a
+        // minute away, and every hour while closed (this entry point).
+        backgroundCheck: updateCheckInBackground,
       );
 
   /// The app's texts: the package's English ones in the app's date format.
@@ -191,7 +208,7 @@ class AppUpdates {
 
   static void _log(
       UpdateLogLevel level, String event, Map<String, Object?> data) {
-    // A check every 15 minutes that finds nothing isn't worth a log line.
+    // A check every 5 minutes that finds nothing isn't worth a log line.
     if (level == UpdateLogLevel.debug) return;
     LogService.add('update', data.isEmpty ? event : '$event $data');
   }

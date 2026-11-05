@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.0] - 2026-11-05
+- Updates: checks for a new version every time you open the app, every 5 minutes while you use it, when you come back to it after a minute or more, and every hour while it is closed. A new version found while the app is closed downloads quietly; Android asks "Update this app?" the next time you open it
+
 ## [0.2.139] - 2026-11-02
 - Every screen, menu, bottom sheet and dialog stays clear of Android's navigation bar: the app checks whether the bar is there and how tall it is (the slim gesture line or the Back/Home/Recents buttons, also on the side in landscape) and keeps every button and line of text above it; the strip behind the bar takes the page colour
 

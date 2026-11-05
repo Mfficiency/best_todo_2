@@ -39,6 +39,7 @@ class MfficiencyUpdatesPlugin :
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
+        (context as? android.app.Application)?.let { UpdateCheckJob.watchActivities(it) }
         channel = MethodChannel(binding.binaryMessenger, "mfficiency_updates")
         channel.setMethodCallHandler(this)
     }
@@ -105,6 +106,22 @@ class MfficiencyUpdatesPlugin :
                     result.success(null)
                     main.postDelayed({ BackupFiles.restart(context) }, 150)
                 }
+                "scheduleBackgroundCheck" -> {
+                    TokenVault.write(context, call.argument<String>("token"))
+                    result.success(
+                        UpdateCheckJob.schedule(
+                            context,
+                            call.argument<Number>("handle")!!.toLong(),
+                            call.argument<Int>("minutes") ?: 60,
+                        ),
+                    )
+                }
+                "cancelBackgroundCheck" -> {
+                    UpdateCheckJob.cancel(context)
+                    TokenVault.write(context, null)
+                    result.success(null)
+                }
+                "backgroundToken" -> result.success(TokenVault.read(context))
                 "openUrl" -> result.success(
                     start(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url")!!))),
                 )

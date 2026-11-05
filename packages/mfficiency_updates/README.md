@@ -18,10 +18,11 @@ Android installer (other platforms: checks only, no install).
   Private repos: a token (`Authorization: Bearer`, asset download through a
   short-lived signed link). Or a JSON manifest
   `{"version", "build", "url", "notes"}`.
-- **When:** on the first frame if the last check is older than
-  `checkInterval`, every `pollInterval` while in the foreground, **when the
-  app comes back to the foreground** and the last check is older than
-  `dueAfter` (`pollInterval`, or `checkInterval` without polling), when the
+- **When:** **every time the app opens** (the first frame; `checkInterval`
+  zero), **every 5 minutes while it is open** (`pollInterval`), **when the
+  app comes back to the foreground** and the last check is a minute old or
+  more (`resumeCheckAfter`), **every hour while the app is closed**
+  (`backgroundCheck`, `backgroundInterval`; see Background check below), when the
   "check automatically" switch is **turned on** (`autoCheckChanges` /
   `autoCheckChanged()`; off stops polling), on pull-down in the changelog
   (`refresh`), from "Check for updates" (`checkNow`). Automatic checks only
@@ -193,7 +194,7 @@ final updates = UpdateController(
     tokenProvider: () => secrets.read('updates.github_token'),
     autoCheck: () => settings.autoCheck, // the user's switch
     autoCheckChanges: settings,          // a Listenable; or autoCheckChanged()
-    pollInterval: const Duration(minutes: 15),
+    backgroundCheck: updateCheckInBackground, // top-level, see below
   ),
   store: SharedPreferencesUpdateStore(prefs),
   platform: UpdatePlatform(openUrl: openInBrowser), // desktop / web links
@@ -205,6 +206,28 @@ final updates = UpdateController(
 await updates.init();                 // before the first frame (no network)
 // after the first frame, with a context above every screen:
 updates.start(context);
+```
+
+### Background check (every hour while the app is closed)
+
+Android's JobScheduler (`UpdateCheckJob`, scheduled by `start()` while
+"check automatically" is on, cancelled when it is turned off, kept across
+reboots, only with a network) starts a headless Flutter engine with the
+app's entry point. It builds the same controller the app builds and hands
+it to `UpdateBackground.run`, which checks and, for a newer build, downloads
+the APK silently. Nothing is shown; Android's "Update this app?" opens the
+next time the app is opened (the check at start finds the APK complete).
+The job is skipped while the app is open and stopped when the app opens
+during it, so both never download at once.
+
+```dart
+@pragma('vm:entry-point')
+Future<void> updateCheckInBackground() =>
+    UpdateBackground.run(() async {
+      final updates = UpdateController(/* the app's own config and store */);
+      await updates.init();
+      return updates;
+    });
 ```
 
 ### Config
@@ -226,9 +249,12 @@ updates.start(context);
 | `autoCheckChanges` | null | `Listenable` that fires when the switch may have changed |
 | `includePrereleases` | on | |
 | `legacyBuildLimit` | `0` | staging/dev builds below it are never offered |
-| `checkInterval` | 24 h | the start check runs when the last one is older |
-| `pollInterval` | zero (off) | checks while in the foreground |
-| `checkOnResume` | `true` | check when back in the app and older than `dueAfter` |
+| `checkInterval` | zero | the start check runs when the last one is older; zero = every start |
+| `pollInterval` | 5 min | checks while in the foreground; zero = off |
+| `checkOnResume` | `true` | check when back in the app and older than `resumeCheckAfter` |
+| `resumeCheckAfter` | 1 min | |
+| `backgroundCheck` | null | the app's top-level entry point for the check while closed |
+| `backgroundInterval` | 1 h | how often Android runs it (at least 15 min) |
 | `firstCheckDelay` | 3 s | after the first frame |
 | `rateLimitPause` | 30 min | pause when GitHub names no reset |
 | `userAgent` | `<appName>-update-check` | default dart:io HTTP + downloader (spaces removed) |

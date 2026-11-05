@@ -9,6 +9,10 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- The hourly update check while the app is closed (UpdateCheckJob)
+         keeps its schedule after a reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Finds Android's installer app (Android 11+ package visibility). -->
     <queries>
         <intent>
@@ -28,6 +32,12 @@
     </queries>
 
     <application>
+        <!-- The update check while the app is closed: every hour, with a
+             network (lib/src/background.dart). -->
+        <service
+            android:name="ch.mfficiency.updates.UpdateCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <!-- Shares the downloaded APK (cache/updates/) with the installer app,
              which ends with "App updated" and Open. -->
         <provider

@@ -107,7 +107,9 @@ file is the short operational guide.
   `UpdateTokenTile`) in `flutter_secure_storage` via
   `AppUpdates.readToken`/`writeToken` = `tokenProvider` + `reloadToken()`, so a repo turned
   private keeps updating; checks
-  every 15 minutes, also on resume when due; the "Check automatically" switch =
+  every start, every 5 minutes while open, after a minute away and every hour while closed
+  (`updateCheckInBackground`, the package's `UpdateCheckJob`: check and silent download
+  only, the install and its backup wait for the app); the "Check automatically" switch =
   `UpdateConfig.autoCheck`, Settings calls the controller's `autoCheckChanged()`; `music-v…`
   releases here are Best Music's bridge releases, never offered), started after the first
   frame; `promptAllowed` (`AppUpdates.promptAllowed`, false while the

@@ -102,6 +102,8 @@ class FakeNative {
           'canInstallApks' => true,
           'installTime' => installTime?.millisecondsSinceEpoch,
           'openUrl' => true,
+          'backgroundToken' => backgroundToken,
+          'scheduleBackgroundCheck' => true,
           _ => null,
         };
       },
@@ -111,6 +113,7 @@ class FakeNative {
   final calls = <MethodCall>[];
   String installOutcome = 'ok';
   DateTime? installTime;
+  String? backgroundToken;
 
   List<MethodCall> get installs =>
       calls.where((c) => c.method == 'installApk').toList();

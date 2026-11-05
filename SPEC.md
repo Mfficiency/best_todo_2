@@ -3813,8 +3813,8 @@ in App Logs → Todoist — onboarding has already finished by then.
       `AppUpdates.controller`, one `UpdateController` per app: `UpdateConfig` with
       `appName` "BestToDo" / "Best Music" (APK file `<name>-<x.y.z>-<build>.apk`), the
       running version and versionCode, `channel` (`Config.channel`, shown as "· dev"), repo
-      `Mfficiency/best_todo_2`, `tagPrefix` `v` / `music-v`, `checkInterval` and
-      `pollInterval` 15 minutes (GitHub's anonymous limit is 60 requests/hour), `autoCheck`
+      `Mfficiency/best_todo_2`, `tagPrefix` `v` / `music-v`, the package's timing (below) with
+      `backgroundCheck: updateCheckInBackground`, `autoCheck`
       = BestToDo's "Automatically update" switch (`Config.autoUpdateCheckEnabled`, same
       stored key and value as before) / always on for Best Music (no switch); store =
       `SharedPreferencesUpdateStore`; strings = the package's English ones with the app's
@@ -3909,9 +3909,13 @@ in App Logs → Todoist — onboarding has already finished by then.
       well reads the private apps), User-Agent `BestToDo-other-apps`. The page's own token
       (key icon) is the package's (SharedPreferences `other_apps.github_token`).
       Tests: `test/update/other_apps_test.dart`.
-    - **Behaviour (the package's):** checks on the first frame when the last check is 15+
-      minutes old, every 15 minutes while in the foreground, **when the app comes back to
-      the foreground** and the last check is 15+ minutes old, when the switch is turned on,
+    - **Behaviour (the package's, 1.11.0):** checks on the first frame of every start,
+      every 5 minutes while in the foreground, **when the app comes back to the foreground**
+      and the last check is a minute old or more, **every hour while the app is closed**
+      (Android's JobScheduler runs `updateCheckInBackground` in a headless engine: check and
+      silent download only, never the installer; skipped while the app is open, stopped
+      when it opens; the token for a private repo is handed over encrypted), when the
+      switch is turned on,
       on pull-down in the Changelog (`refresh`) and from "Check for updates" (`checkNow`).
       Only releases of the app's tag prefix **with an APK asset** count (a release whose APK
       is still uploading is never offered); equal build numbers: main before staging before
