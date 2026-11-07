@@ -24,7 +24,7 @@ dependencies:
   package_info_plus: ^8.0.2   # dynamic app version at runtime
   path_provider: ^2.1.2       # settings + technical-page persistence
   shared_preferences: ^2.2.2  # intro-shown flag
-  flutter_markdown: ^0.6.10   # Changelog rendering
+  flutter_markdown_plus: ^1.0.12   # Changelog rendering (successor of the discontinued flutter_markdown)
   file_selector: ^1.0.0       # backup import / export file picking
   url_launcher: ^6.2.5        # "Update app" link on the About page
   fl_chart: ^0.63.0           # startup-times chart

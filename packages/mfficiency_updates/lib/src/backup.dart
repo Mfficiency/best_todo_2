@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -82,6 +83,16 @@ enum FullBackupRestore {
   failed,
 }
 
+/// How often [FullBackup.backupIfDue] writes a backup by itself.
+enum FullBackupSchedule {
+  off(null),
+  daily(Duration(days: 1)),
+  weekly(Duration(days: 7));
+
+  const FullBackupSchedule(this.interval);
+  final Duration? interval;
+}
+
 /// A full backup of everything an app keeps on the phone, in one file in
 /// the public Downloads folder (`Download/<appName>/Backups/`), so it
 /// survives uninstalling the app: every file in the app's documents,
@@ -98,6 +109,7 @@ class FullBackupConfig {
     this.excluded = const {},
     this.excludedPrefixes = const {},
     this.extras = const {},
+    this.defaultSchedule = FullBackupSchedule.weekly,
   });
 
   /// Folder name in Downloads and the start of the file name.
@@ -116,6 +128,9 @@ class FullBackupConfig {
 
   /// Data outside the folders and SharedPreferences, by name.
   final Map<String, FullBackupExtra> extras;
+
+  /// Automatic backups until the user picks another schedule.
+  final FullBackupSchedule defaultSchedule;
 }
 
 class FullBackup {
@@ -139,6 +154,7 @@ class FullBackup {
   static const format = 1;
   static const lastKey = 'state.backup.last';
   static const offeredKey = 'state.backup.restoreOffered';
+  static const scheduleKey = 'state.backup.schedule';
 
   /// Prefixes always left alone: the update state and this class's own.
   static const ownPrefixes = {'state.updates.', 'state.backup.'};
@@ -160,6 +176,16 @@ class FullBackup {
 
   /// True while a backup or restore runs.
   final busy = ValueNotifier(false);
+
+  /// How often a backup is made by itself ([backupIfDue]).
+  late final schedule = ValueNotifier<FullBackupSchedule>(
+    FullBackupSchedule.values.firstWhere(
+      (s) => s.name == _prefs.getString(scheduleKey),
+      orElse: () => config.defaultSchedule,
+    ),
+  );
+
+  AppLifecycleListener? _lifecycle;
 
   bool _freshAtStart = false;
 
@@ -246,6 +272,36 @@ class FullBackup {
     } finally {
       busy.value = false;
     }
+  }
+
+  Future<void> setSchedule(FullBackupSchedule value) async {
+    schedule.value = value;
+    await _prefs.setString(scheduleKey, value.name);
+    _log('backup.schedule', {'schedule': value.name});
+    await backupIfDue();
+  }
+
+  /// Writes a backup (`scheduled`) when the [schedule] says one is due:
+  /// the newest backup of any kind is older than its interval. Never
+  /// throws; a failure is logged and tried again next time.
+  Future<FullBackupRecord?> backupIfDue() async {
+    final interval = schedule.value.interval;
+    if (!isSupported || interval == null || busy.value) return null;
+    final newest = last.value?.at;
+    if (newest != null && _now().difference(newest) < interval) return null;
+    try {
+      return await backupNow(reason: 'scheduled');
+    } on Object catch (e) {
+      _log('backup.scheduled_failed', {'error': e.runtimeType.toString()});
+      return null;
+    }
+  }
+
+  /// Call once after the first frame: [backupIfDue] now and whenever the
+  /// app comes back to the foreground.
+  void startSchedule() {
+    _lifecycle ??= AppLifecycleListener(onResume: () => unawaited(backupIfDue()));
+    unawaited(backupIfDue());
   }
 
   /// For `UpdateController(beforeInstall: backup.beforeUpdate)`: a full
@@ -474,7 +530,6 @@ class FullBackupStrings {
   const FullBackupStrings({
     this.backupTitle = 'Back up everything',
     this.backupSubtitle = _backupSubtitle,
-    this.lastBackup = _lastBackup,
     this.restoreTitle = 'Restore from a backup',
     this.restoreSubtitle =
         'Replaces all data in this app with a backup file, then restarts it.',
@@ -498,11 +553,18 @@ class FullBackupStrings {
     this.offerYes = 'Pick backup',
     this.offerNo = 'Start fresh',
     this.dateTime = _dateTime,
+    this.locationTitle = 'Backup location',
+    this.locationSubtitle = _locationSubtitle,
+    this.scheduleTitle = 'Automatic backup',
+    this.scheduleOff = 'Off',
+    this.scheduleDaily = 'Daily',
+    this.scheduleWeekly = 'Weekly',
+    this.lastTitle = 'Last backup',
+    this.lastNever = 'No backup yet',
   });
 
   final String backupTitle;
   final String Function(String folder) backupSubtitle;
-  final String Function(String when, String folder) lastBackup;
   final String restoreTitle;
   final String restoreSubtitle;
   final String restoreConfirm;
@@ -519,12 +581,25 @@ class FullBackupStrings {
   final String offerYes;
   final String offerNo;
   final String Function(DateTime t) dateTime;
+  final String locationTitle;
+  final String Function(String folder) locationSubtitle;
+  final String scheduleTitle;
+  final String scheduleOff;
+  final String scheduleDaily;
+  final String scheduleWeekly;
+  final String lastTitle;
+  final String lastNever;
 
+  String scheduleLabel(FullBackupSchedule s) => switch (s) {
+        FullBackupSchedule.off => scheduleOff,
+        FullBackupSchedule.daily => scheduleDaily,
+        FullBackupSchedule.weekly => scheduleWeekly,
+      };
+
+  static String _locationSubtitle(String folder) =>
+      '$folder · kept when the app is uninstalled';
   static String _backupSubtitle(String folder) =>
-      'All data in one file in $folder, kept when the app is uninstalled. '
-      'Also made before every update.';
-  static String _lastBackup(String when, String folder) =>
-      'Last backup $when · $folder';
+      'All data in one file, also made before every update.';
   static String _saved(String location) => 'Backup saved: $location';
   static String _offerBody(String folder) =>
       'If you used this app before, pick a backup from $folder to get all '
@@ -534,8 +609,10 @@ class FullBackupStrings {
       '${_two(t.day)}.${_two(t.month)}.${t.year} ${_two(t.hour)}:${_two(t.minute)}';
 }
 
-/// "Back up everything" and "Restore from a backup" for the app's
-/// settings. Nothing off Android.
+/// The rows of Backup & data, in the order every Mfficiency app shows them:
+/// back up everything, restore, location, automatic backup, last backup.
+/// Nothing off Android. Apps with a searchable settings list use the single
+/// tiles ([FullBackupNowTile] …) as their own rows instead.
 class FullBackupTiles extends StatelessWidget {
   const FullBackupTiles({
     super.key,
@@ -549,33 +626,146 @@ class FullBackupTiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!backup.isSupported) return const SizedBox.shrink();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FullBackupNowTile(backup: backup, strings: strings),
+        FullBackupRestoreTile(backup: backup, strings: strings),
+        FullBackupLocationTile(backup: backup, strings: strings),
+        FullBackupScheduleTile(backup: backup, strings: strings),
+        FullBackupLastTile(backup: backup, strings: strings),
+      ],
+    );
+  }
+}
+
+/// "Back up everything": a full backup now.
+class FullBackupNowTile extends StatelessWidget {
+  const FullBackupNowTile({super.key, required this.backup, this.strings = const FullBackupStrings()});
+
+  final FullBackup backup;
+  final FullBackupStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!backup.isSupported) return const SizedBox.shrink();
     return ValueListenableBuilder<bool>(
       valueListenable: backup.busy,
-      builder: (context, busy, _) => ValueListenableBuilder<FullBackupRecord?>(
-        valueListenable: backup.last,
-        builder: (context, last, _) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: busy
-                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.backup_outlined),
-              title: Text(strings.backupTitle),
-              subtitle: Text(last == null
-                  ? strings.backupSubtitle(backup.folder)
-                  : strings.lastBackup(strings.dateTime(last.at), backup.folder)),
-              enabled: !busy,
-              onTap: () => backup.runBackup(context, strings: strings),
+      builder: (context, busy, _) => ListTile(
+        key: const Key('fullBackup.now'),
+        leading: busy
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.backup_outlined),
+        title: Text(strings.backupTitle),
+        subtitle: Text(strings.backupSubtitle(backup.folder)),
+        enabled: !busy,
+        onTap: () => backup.runBackup(context, strings: strings),
+      ),
+    );
+  }
+}
+
+/// "Restore from a backup": confirm, pick a file, restore, restart.
+class FullBackupRestoreTile extends StatelessWidget {
+  const FullBackupRestoreTile({super.key, required this.backup, this.strings = const FullBackupStrings()});
+
+  final FullBackup backup;
+  final FullBackupStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!backup.isSupported) return const SizedBox.shrink();
+    return ValueListenableBuilder<bool>(
+      valueListenable: backup.busy,
+      builder: (context, busy, _) => ListTile(
+        key: const Key('fullBackup.restore'),
+        leading: const Icon(Icons.settings_backup_restore),
+        title: Text(strings.restoreTitle),
+        subtitle: Text(strings.restoreSubtitle),
+        enabled: !busy,
+        onTap: () => backup.runRestore(context, strings: strings),
+      ),
+    );
+  }
+}
+
+/// "Backup location": the Downloads folder the backups go to.
+class FullBackupLocationTile extends StatelessWidget {
+  const FullBackupLocationTile({super.key, required this.backup, this.strings = const FullBackupStrings()});
+
+  final FullBackup backup;
+  final FullBackupStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!backup.isSupported) return const SizedBox.shrink();
+    return ListTile(
+      key: const Key('fullBackup.location'),
+      leading: const Icon(Icons.folder_outlined),
+      title: Text(strings.locationTitle),
+      subtitle: Text(strings.locationSubtitle(backup.folder)),
+    );
+  }
+}
+
+/// "Automatic backup": off, daily or weekly.
+class FullBackupScheduleTile extends StatelessWidget {
+  const FullBackupScheduleTile({super.key, required this.backup, this.strings = const FullBackupStrings()});
+
+  final FullBackup backup;
+  final FullBackupStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!backup.isSupported) return const SizedBox.shrink();
+    return ValueListenableBuilder<FullBackupSchedule>(
+      valueListenable: backup.schedule,
+      builder: (context, current, _) => ListTile(
+        key: const Key('fullBackup.schedule'),
+        leading: const Icon(Icons.event_repeat_outlined),
+        title: Text(strings.scheduleTitle),
+        subtitle: Text(strings.scheduleLabel(current)),
+        onTap: () async {
+          final picked = await showDialog<FullBackupSchedule>(
+            context: context,
+            builder: (c) => SimpleDialog(
+              title: Text(strings.scheduleTitle),
+              children: [
+                for (final s in FullBackupSchedule.values)
+                  ListTile(
+                    key: Key('fullBackup.schedule.${s.name}'),
+                    leading: Icon(s == current ? Icons.radio_button_checked : Icons.radio_button_unchecked),
+                    title: Text(strings.scheduleLabel(s)),
+                    selected: s == current,
+                    onTap: () => Navigator.pop(c, s),
+                  ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.settings_backup_restore),
-              title: Text(strings.restoreTitle),
-              subtitle: Text(strings.restoreSubtitle),
-              enabled: !busy,
-              onTap: () => backup.runRestore(context, strings: strings),
-            ),
-          ],
-        ),
+          );
+          if (picked != null && picked != current) await backup.setSchedule(picked);
+        },
+      ),
+    );
+  }
+}
+
+/// "Last backup": when the newest backup of this install was written.
+class FullBackupLastTile extends StatelessWidget {
+  const FullBackupLastTile({super.key, required this.backup, this.strings = const FullBackupStrings()});
+
+  final FullBackup backup;
+  final FullBackupStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!backup.isSupported) return const SizedBox.shrink();
+    return ValueListenableBuilder<FullBackupRecord?>(
+      valueListenable: backup.last,
+      builder: (context, last, _) => ListTile(
+        key: const Key('fullBackup.last'),
+        leading: const Icon(Icons.history),
+        title: Text(strings.lastTitle),
+        subtitle: Text(last == null ? strings.lastNever : strings.dateTime(last.at)),
       ),
     );
   }

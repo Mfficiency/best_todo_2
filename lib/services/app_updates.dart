@@ -10,6 +10,7 @@ import '../config.dart';
 import '../utils/date_time_format.dart';
 import 'log_service.dart';
 import 'pre_update_backup.dart';
+import 'problem_reports.dart';
 
 export 'package:mfficiency_updates/mfficiency_updates.dart';
 
@@ -34,17 +35,41 @@ enum UpdatesApp {
 ///
 /// * [config]: repo `Mfficiency/best_todo_2` (public), the tag
 ///   prefix `v`, every 15 minutes while open (GitHub's anonymous limit is
-///   60 requests/hour), the "Automatically update" switch
+///   60 requests/hour), the "Check automatically" switch
 ///   ([Config.autoUpdateCheckEnabled]);
-/// * the optional GitHub token ([readToken]/[saveToken], Settings →
-///   Updates) in secure storage, so updates keep working if the repo turns
+/// * the optional GitHub token ([readToken]/[writeToken], Settings →
+///   Updates → GitHub token, the package's `UpdateTokenTile`) in secure
+///   storage, so updates keep working if the repo turns
 ///   private; without one everything works as before (anonymous API);
 /// * the package's [FullBackup] ([backup], `Download/BestToDo/Backups`)
 ///   before every update as its `beforeInstall`, and [promptAllowed] (false
 ///   while the intro or a first-start picker is open) as its
-///   `promptAllowed`;
+///   `promptAllowed`; its automatic schedule replaces the folder backup's
+///   on Android ([adoptFolderBackupSchedule]);
 /// * the app's date format ([strings]) and log ([LogService]);
-/// * the update prefs from before the package ([migrateLegacyState]).
+/// * the update prefs from before the package ([migrateLegacyState]);
+/// * About › Other apps ([otherApps], the package's
+///   [OtherAppsController]) on the same HTTP client and platform.
+/// The update check while the app is closed: Android runs it every hour
+/// (package README.md › Background check). Loads the settings and the
+/// version like `main()`, then only checks and downloads; Android's
+/// "Update this app?" (and the backup before it) waits until BestToDo is
+/// opened.
+@pragma('vm:entry-point')
+Future<void> updateCheckInBackground() => UpdateBackground.run(() async {
+      await Config.load();
+      await Config.ensureVersionLoaded();
+      final prefs = await SharedPreferences.getInstance();
+      final c = AppUpdates.controllerFor(
+        UpdatesApp.todo,
+        version: Config.version,
+        build: int.tryParse(Config.buildNumber) ?? 0,
+        store: SharedPreferencesUpdateStore(prefs),
+      );
+      await c.init();
+      return c;
+    });
+
 class AppUpdates {
   AppUpdates._();
 
@@ -82,24 +107,18 @@ class AppUpdates {
     }
   }
 
-  /// Saves [token] (trimmed), or removes it when null/empty, then has the
-  /// running [controller] read it again (`reloadToken`, which checks at
-  /// once). Errors from secure storage propagate (Settings shows them).
-  static Future<void> saveToken(String? token) async {
+  /// Saves [token] (trimmed), or removes it when null/empty. The
+  /// package's `UpdateTokenTile` calls it, then has the controller read it
+  /// again (`reloadToken`, which checks at once). Errors from secure
+  /// storage propagate.
+  static Future<void> writeToken(String? token) async {
     final t = token?.trim() ?? '';
     if (t.isEmpty) {
       await secureStorage.delete(key: tokenKey);
     } else {
       await secureStorage.write(key: tokenKey, value: t);
     }
-    final c = controller;
-    if (c != null) unawaited(c.reloadToken());
   }
-
-  /// How often a running app checks (and how old the last check may be at
-  /// start or when it comes back): GitHub's anonymous API allows 60
-  /// requests/hour/IP.
-  static const Duration interval = Duration(minutes: 15);
 
   /// The running app's updates; null until [create] ran (tests set it,
   /// pages without one show no update UI).
@@ -126,6 +145,36 @@ class AppUpdates {
   /// dialog never opens over them; it opens once they are closed.
   static final ValueNotifier<bool> promptAllowed = ValueNotifier(true);
 
+  /// Whether Settings → Backup & data shows the full backup's rows (Back up
+  /// everything … Last backup): on Android. There the folder backup
+  /// ([AutoBackupService], JSON + Markdown to a picked folder) is retired
+  /// so only one automatic backup exists; elsewhere it stays the backup.
+  static bool get fullBackupShown => backup?.isSupported ?? false;
+
+  /// Once, after [Config.load]: where the full backup is shown
+  /// ([fullBackupShown]) and the user had set the folder backup to daily or
+  /// weekly but never picked the full backup's schedule, the full backup
+  /// takes that schedule (no backup is written now; the schedule's first
+  /// one runs after the first frame). The folder backup's settings and
+  /// files are left as they are (its JSON files still restore through
+  /// Sync & export → Import); [AutoBackupService.maybeRun] no longer runs
+  /// it there.
+  static Future<void> adoptFolderBackupSchedule({SharedPreferences? prefs}) async {
+    final b = backup;
+    if (b == null || !b.isSupported) return;
+    final schedule = switch (Config.autoBackupFrequency) {
+      'daily' => FullBackupSchedule.daily,
+      'weekly' => FullBackupSchedule.weekly,
+      _ => null,
+    };
+    if (schedule == null) return;
+    prefs ??= await SharedPreferences.getInstance();
+    if (prefs.containsKey(FullBackup.scheduleKey)) return;
+    await prefs.setString(FullBackup.scheduleKey, schedule.name);
+    b.schedule.value = schedule;
+    LogService.add('backup', 'adopted the folder backup schedule ${schedule.name}');
+  }
+
   /// The running app's [UpdateConfig].
   static UpdateConfig config(
     UpdatesApp app, {
@@ -145,8 +194,10 @@ class AppUpdates {
         tokenProvider: readToken,
         tagPrefix: app.tagPrefix,
         autoCheck: () => Config.autoUpdateCheckEnabled,
-        checkInterval: interval,
-        pollInterval: interval,
+        // When it checks is the package's default, the same in every
+        // Mfficiency app: every start, every 5 minutes while open, after a
+        // minute away, and every hour while closed (this entry point).
+        backgroundCheck: updateCheckInBackground,
       );
 
   /// The app's texts: the package's English ones in the app's date format.
@@ -157,7 +208,7 @@ class AppUpdates {
 
   static void _log(
       UpdateLogLevel level, String event, Map<String, Object?> data) {
-    // A check every 15 minutes that finds nothing isn't worth a log line.
+    // A check every 5 minutes that finds nothing isn't worth a log line.
     if (level == UpdateLogLevel.debug) return;
     LogService.add('update', data.isEmpty ? event : '$event $data');
   }
@@ -244,6 +295,38 @@ class AppUpdates {
     await c.init();
     return controller = c;
   }
+
+  // ── About › Other apps ───────────────────────────────────────────────
+
+  /// BestToDo's applicationId, left out of the other apps' list.
+  static const String appId = 'com.mfficiency.best_todo_2';
+
+  static OtherAppsController? _otherApps;
+
+  /// About › Other apps (package README.md › Other apps): every other
+  /// Mfficiency app, installed or not, its newest release and Install /
+  /// Update / Open. Made on first use on [controller]'s HTTP client and
+  /// platform (the package defaults before [create], e.g. in tests); the
+  /// problem-report token ([ProblemReports]) also reads the private apps.
+  static OtherAppsController get otherApps =>
+      _otherApps ??= createOtherApps();
+
+  @visibleForTesting
+  static set otherApps(OtherAppsController? c) => _otherApps = c;
+
+  static OtherAppsController createOtherApps({
+    UpdateHttp? http,
+    UpdatePlatform? platform,
+  }) =>
+      OtherAppsController(
+        currentAppId: appId,
+        http: http ?? controller?.http,
+        platform: platform ??
+            controller?.platform ??
+            UpdatePlatform(openUrl: ProblemReports.openUrl),
+        fallbackToken: () => ProblemReports.instance.token(),
+        userAgent: 'BestToDo-other-apps',
+      )..selfUpdates = controller; // About › Update all apps: this app last
 
   /// After the first frame: Android's install time, the check when due,
   /// polling and the resume check. [context] is above every screen (the

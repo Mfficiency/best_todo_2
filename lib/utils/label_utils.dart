@@ -97,6 +97,11 @@ const String alarmToken = 'Alarm';
 const String countdownToken = 'Countdown';
 const String researchToken = 'Research';
 
+/// Synthetic state tag for a grocery item ([Task.isGrocery]) so a Filtering
+/// rule can name it. Not (yet) one of [protectedStateTokens]: the Groceries
+/// tool has no view-filter id of its own.
+const String groceriesToken = 'Groceries';
+
 /// Reserved like the rest, but with no dedicated view/page yet (the
 /// Changelog tool shows CHANGELOG.md text, not a task list) — kept here so
 /// it still renders as a protected chip and can still be named in another
@@ -137,6 +142,16 @@ const String worklistToken = 'mlr';
 
 /// Whether [label] carries the Worklist gate.
 bool hasWorklistToken(String label) => labelHasToken(label, worklistToken);
+
+/// Label token identifying a Lemmon work-context item — the second work
+/// context next to [worklistToken] (MLR/Migros). Gated exactly like it: out
+/// of every main view by default, shown in Tools ▸ Lemmon and, when the
+/// drawer's Lemmon toggle is on, the home list (see
+/// [ItemViews.isVisibleInMainViews] and `HomeContexts`).
+const String lemmonToken = 'lemmon';
+
+/// Whether [label] carries the Lemmon gate.
+bool hasLemmonToken(String label) => labelHasToken(label, lemmonToken);
 
 /// The wishlist priority tokens, lowest first (mirrors `wishPriorityLabels`).
 const List<String> priorityTokens = <String>[

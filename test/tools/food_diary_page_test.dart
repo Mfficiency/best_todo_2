@@ -743,4 +743,33 @@ void main() {
         .firstWhere((t) => t['isStomachIssue'] == true);
     expect(added['stomachEventType'], isNull);
   });
+
+  testWidgets(
+      'a voice-note entry that needs verifying shows a blue dot until it is '
+      'edited and saved', (tester) async {
+    await pumpFoodDiary(
+      tester,
+      tasks: [
+        Task(
+          title: 'Pasta pesto',
+          dueDate: DateTime.now(),
+          hasExplicitTime: true,
+          isEatingHabit: true,
+          needsVerification: true,
+        ),
+      ],
+      marker: 'Pasta pesto',
+    );
+    expect(find.byKey(const Key('food-verify-dot')), findsOneWidget);
+
+    await tester.tap(find.text('Pasta pesto'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await settleWrites(tester);
+
+    expect(find.byKey(const Key('food-verify-dot')), findsNothing);
+    final saved = await readJsonList(tester, 'tasks.json');
+    expect(saved.single['needsVerification'], isNull);
+  });
 }

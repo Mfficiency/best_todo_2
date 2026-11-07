@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.4.1] - 2026-11-05
+- Security check of every library the app uses: none is compromised or has a known vulnerability. Changelog and What's new now use flutter_markdown_plus, the maintained successor of flutter_markdown. Obsidian plugin: its build and test tools updated past known security problems (esbuild, handlebars, brace-expansion, js-yaml, moment)
+
+## [0.4.0] - 2026-11-05
+- Updates: a download that is cut off (no network, the app closed or put away) starts again by itself, in the app within seconds and in the background once there is a network, and continues where it stopped
+- About › Update all apps: updates this app and every other Mfficiency app on the phone in one go. The newest versions download in the background, then Android asks for each app, one after the other
+
+## [0.3.0] - 2026-11-05
+- Updates: checks for a new version every time you open the app, every 5 minutes while you use it, when you come back to it after a minute or more, and every hour while it is closed. A new version found while the app is closed downloads quietly; Android asks "Update this app?" the next time you open it
+
+## [0.2.139] - 2026-11-02
+- Every screen, menu, bottom sheet and dialog stays clear of Android's navigation bar: the app checks whether the bar is there and how tall it is (the slim gesture line or the Back/Home/Recents buttons, also on the side in landscape) and keeps every button and line of text above it; the strip behind the bar takes the page colour
+
+## [0.2.138] - 2026-10-30
+- What's new: after an update, a small sheet lists the changes since the version you had before, once. Settings → Releases (a new section, just above Debugging) turns it off; it is on by default.
+- Every GitHub token dialog (Debugging, Updates, About → Other apps) works the same: the token field at the top (show it, copy it), one short line below, the full steps folded under "How to get a token", and Close always visible. The rows just say Token set or No token. Updates package 1.10.0.
+
+## [0.2.137] - 2026-10-30
+- Settings has the same layout as the other Mfficiency apps. Appearance starts with Dark mode, Compact mode (new: tighter spacing on every screen), Time format (24-hour or 12-hour, was the 24-hour time switch) and Date format. A new Debugging section, just above Updates, has Send a report (to Claude) and its GitHub token (moved from Updates). Updates: Check automatically (was Automatically update), Check for updates and GitHub token (the shared row: it saves as you paste and checks at once; a saved token keeps working). Backup & data: Back up everything, Restore from a backup, Backup location, Automatic backup (Off / Daily / Weekly; weekly unless you choose otherwise) and Last backup. On Android that is the one full backup in Download/BestToDo/Backups; the older folder backup (JSON + Markdown notes to a folder you picked) no longer runs there, and if you had it on daily or weekly the full backup takes that schedule. Its earlier files stay where they are and still restore through Sync & export → Import. On Windows the same rows drive the folder backup. Updates package 1.9.0.
+
+## [0.2.136] - 2026-10-30
+- Other apps: at the very bottom of About, a new row opens a page with all the other Mfficiency apps (Best Music, BestCollage, BestFloory, Hally Remote, Vesta Immo, Best Watch, MostlyGoodNews). Each shows whether it is installed and its newest version, with Install, Update or Open: the download runs quietly in the background like an update, then Android asks once. The private apps need a GitHub token that can read them (the key icon on that page, or the Problem reports token if it also has Contents: Read-only); without one they open on GitHub. Updates package 1.8.0.
+
+## [0.2.135] - 2026-10-29
+- Report a problem to Claude: double tap the app name and version at the top of the menu, describe what went wrong and tap Send to Claude. The app's logs (alarm log, sync history, app events) go along if you leave them on; Claude fixes it and the fix arrives as the next update. Settings → Updates → Problem reports to Claude explains the GitHub token that lets the app send it by itself (without one, the report opens on GitHub for you to submit). Updates package 1.7.0.
+
+## [0.2.134] - 2026-10-29
+- Backlog items on Home behave like normal tasks again: they sit in the tab of their due date, and swiping one to Tomorrow or the Day after just moves its date. Only when you move one to Next week does it also become Next, and to Next month or Future, Someday.
+
+## [0.2.133] - 2026-10-28
+- With Backlog on in the drawer's Home filters, backlog items sit in the home tabs by state — Active in Today, Next in Next week, Someday in Future — and moving or swiping one changes its state instead of its due date.
+
+## [0.2.132] - 2026-10-28
+- Approvals website: Backlog items now show up there too, so the website lists the same items as the app and Todoist instead of nearly nothing. Approving one there puts it in your Wishlist as usual; to get its Obsidian page, tap **Create Obsidian page** on the item in the app's Wishlist. Groceries and Research items still have to be approved in the app (the footer says how many are waiting there).
+
+## [0.2.131] - 2026-10-28
+- Home filters: next to Todo, MLR and Lemmon there is now a **Backlog** switch (drawer → arrow next to Home). Turn it on to see your Backlog (wishlist) items in the home list too; it's off by default, so nothing changes until you switch it on.
+
+## [0.2.130] - 2026-10-28
+- Waiting for Approval syncs with Todoist by itself now: opening it pulls the latest (a thin bar shows while it does), and you can pull down to sync again. What you approved or denied on the approvals website or in Todoist shows up right away instead of only after leaving the app. Items that were approved on the website before your phone had this update are fixed on the next sync, and ones denied there go to the Deleted bin instead of staying stuck.
+
+## [0.2.129] - 2026-10-28
+- Waiting for Approval: every category and every date/conversation header now has its own approve (green ✓, left) and deny (red ✗, right) button, so a whole group is handled in one click — in the app and on the approvals website. Approving applies each item's suggestion; denying shows the usual Undo for a few seconds.
+
+## [0.2.128] - 2026-10-28
+- Waiting for Approval: inside each category (Todo, Migros, ...) the items are now also grouped by date and conversation, with a small header like "2026-10-28  Walk 21 Oct (2)" — in the app and on the approvals website. Long-press one of those headers to select just its items.
+
+## [0.2.127] - 2026-10-28
+- Approvals website: two wrong passwords in a row now delete the saved token from that browser right away and block it for 3 months, without saying so — the lock screen keeps answering "Wrong password", even to the right one, and the site can't be set up again there. If that happens to you after a typo, clear the site's data in that browser (site settings → clear data) and set it up again with your Todoist token.
+
+## [0.2.126] - 2026-10-28
+- Approvals website: approve or deny your Waiting for Approval items from any computer's browser, no install. Open https://mfficiency.github.io/best_todo_2/, paste your Todoist API token once and choose a password (12+ characters). The token stays only in that browser, encrypted with your password; after that the site just asks for the password. It locks itself after 15 minutes without use (or with Lock in the menu) and a wrong password locks it down (see 0.2.127). Todo, Migros, Lemmon and Other items can be approved there; Backlog, Research, Groceries and Food stay for the app. Approvals and denials made on the website show up in the app at its next Todoist sync (a denied item goes to the Deleted bin).
+
+## [0.2.125] - 2026-10-27
+- Waiting for Approval: tap an item to edit it before approving — title, description, note, tags and attachments, the same fields as a task on the home list. Edits are kept while it waits, and it lands in its final list with them.
+
+## [0.2.124] - 2026-10-27
+- Voice inbox, part 2: approving a Backlog item now asks Claude to write its Obsidian page (or tap Create Obsidian page on an expanded wish), and the item gets an Open in Obsidian button once it's there. Moving a Research item to Active starts a research round: Claude asks a few questions, you answer them in the app (Answer questions, with the mic), and it writes the full research page into Obsidian. Set it up under Settings → Claude Routine → Voice inbox routine (needs Todoist sync on).
+
+## [0.2.123] - 2026-10-27
+- Voice inbox: Waiting for Approval now sorts items into Todo, Migros, Lemmon, Backlog, Research, Groceries and Other (pick another view under Group by). Each group swipes to its own destinations: a day for Todo/Migros/Lemmon, Active / Next / Someday for Backlog and Research, Add to list for Groceries; swiping an Other item asks where it belongs. Claude's suggested destination shows as → Tomorrow and is what the countdown picks. Long-press an item and drag it onto another group to fix its category; multi-select is now the Select button at the top. Food from a voice note goes straight into the Food Diary, with a blue dot when it needs a check (editing the entry clears it). Items Claude linked to an Obsidian page get an Open in Obsidian button.
+- Home: the menu's Home row has an arrow that folds out Todo, MLR and Lemmon switches, so the home list can show regular items, MLR items, Lemmon items or any mix. It starts as before (regular items only) and remembers your choice.
+- New tools: Lemmon (like Worklist, for items tagged lemmon) and Groceries, a reusable shopping checklist grouped by category (fruit & vegetables, dairy, pasta & rice, ...) with Check all and Reset list at the top. Categories can be renamed, reordered and added under Edit categories; something already on the list is unchecked instead of added twice, and an item lands in the category it had last time.
+- Wishlist sections are now called Active (was Next release), Next (was Soon), Someday (was Backlog) and Done (was Newly implemented). Research is grouped the same way, with a Move to button on each item; research items no longer show their due date.
+
 ## [0.2.122] - 2026-10-25
 - Watch: BestToDo Watch's app icon is now the BestToDo logo (black on a white circle), so it is easy to spot in the watch's app list instead of a plain blue check mark
 - Notifications show the BestToDo logo in the status bar and on the watch instead of a blank square

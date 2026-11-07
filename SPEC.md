@@ -283,6 +283,15 @@ export cannot fake a recent backup. Backups read straight from disk
 (`readTaskListRaw` etc., not the home page's in-memory list), are written as
 `besttodo_backup_<yyyymmdd_hhmmss>.json` and restore through the regular Import button.
 The Backup section also offers a "Back up now" tile and shows the last backup time.
+**Since 0.2.137 this folder backup is retired on Android** (`AppUpdates.fullBackupShown`):
+there Backup & data shows only the shared full backup's rows and `maybeRun` does nothing;
+a daily/weekly folder schedule is taken over once by the full backup's schedule
+(`AppUpdates.adoptFolderBackupSchedule`, after `Config.load`, only while the full backup
+has no schedule of its own). Its settings and the files already written stay (the JSON
+files still restore through Sync & export → Import). Elsewhere (Windows) it is still the
+backup, shown as the standard rows: Back up everything (= Back up now), Restore from a
+backup (= Import), Backup location (the folder), Automatic backup (Off/Daily/Weekly), Last
+backup.
 
 Next to that JSON file, the same run writes a same-timestamped folder
 `besttodo_backup_<yyyymmdd_hhmmss>/` — a Markdown mirror
@@ -600,6 +609,199 @@ other view's default Hide list the same way `fooddiaryToken` is — bumped
 `_currentViewFilterRulesSeedVersion` to 3 so existing installs re-sync their Filtering
 rules defaults to include it.
 
+### 4.2j Voice inbox — categories in Waiting for Approval (0.2.123)
+
+Design record and the parts still to build: `docs/proposals/voice-inbox.md`;
+the routine's prompt: `docs/proposals/voice-inbox-routine.md`. A Pocket
+recording is split and sorted by an out-of-repo Claude Routine into Todoist
+tasks whose description carries one-line **markers**; the ordinary Todoist pull
+(§4.8) brings them into Waiting for Approval, which is now sectioned by the
+marker's category.
+
+**The marker contract** (`lib/utils/voice_inbox.dart`, `parseVoiceMarkers`, pure
+and unit-tested). Lines of the form `[Key: value]`: any number at the very start
+of the description (the original `[Source:]` same-line form keeps working), or a
+marker alone on its own line anywhere *above the app's metadata trailer*
+(`TodoistMetadataCodec` — the trailer is never read for markers, and a change
+below it doesn't even change the remote fingerprint, so a routine must put new
+markers at the top). Keys (case-insensitive; blank value = absent; first one
+wins): `Source` → `Task.pendingSourceTitle`; `Group` → `Task.approvalGroup`
+(`ApprovalGroups.normalize`: todo, migros (aliases mlr/worklist), lemmon,
+backlog (wishlist/wish), research, groceries (grocery/shopping), food (food
+diary), anything else → other); `Suggest` → `Task.approvalSuggestion` (a day key
+`today|tomorrow|dayafter|nextweek|nextmonth|future` — `suggestedTabIndex` — or a
+state `active|next|someday`, `archive` = someday — `suggestedState`; for food,
+`verify`/`new`); `Project` → `Task.obsidianProject`; `GroceryCategory` →
+`Task.groceryCategory`; `Transcript` → `Task.transcriptPath`; `Obsidian` →
+`Task.obsidianLink`. All are stripped from the visible description, stored
+locally (like `pendingSourceTitle`: never pushed back, no effect on fingerprints).
+
+`TodoistSyncService`: `_taskFromRemote` parses all markers (`_applySortingMarkers`);
+`_applyRemoteToLocal` (a later remote edit) strips them too, always takes an
+`[Obsidian:]` link (the routine adds it after approval), and re-reads the
+sorting markers **only while the task still carries the approval gate** — so a
+task typed straight into Todoist, which lands in Other, moves into its category
+once the routine sorts it. It also keeps such a pending task pending (the remote
+label array used to replace the local labels wholesale, silently dropping the
+gate). **Food skips approval**: a `[Group: food]` task becomes a Food Diary entry
+at once (`_turnIntoFoodEntry`: gate removed, `isEatingHabit`, timed at its
+Todoist due datetime — the recording time — else its creation time,
+`needsVerification` when `Suggest` is `verify`/`new`). Food Diary and grocery
+items are excluded from `syncable`, so step 1 of the next run deletes the
+Todoist copy (pulled exactly once).
+
+**Waiting for Approval** (`lib/ui/waiting_approval_page.dart`):
+- The app bar's **Group by** menu: *By category* (default, not persisted), *By
+  conversation* (the previous grouping, `_groupKeyFor`), *One list*. Category
+  sections follow `ApprovalGroups.all` (Todo, Migros, Lemmon, Backlog, Research,
+  Groceries, Food diary, Other); empty ones are hidden — except while dragging.
+  **Inside each category the items are grouped by date/conversation too (0.2.128)**:
+  the same `_groupKeyFor` groups as *By conversation* (source title with the date
+  of the group's first item, else the creation hour), in sort order, each under an
+  indented sub-header (`_ApprovalGroupHeader(sub: true)`, key
+  `approval-subgroup-<category>-<group>`, built by `_buildConversationHeader`
+  like the conversation view's headers). Tapping one while selecting toggles its
+  items, and long-pressing it starts a selection with just those items.
+  **One-click approve/deny per group (0.2.129):** every category header and every
+  date/conversation header (sub-header or the conversation view's header) has a green
+  ✓ before its title and a red ✗ at its right, the same icons and sides as each row's
+  Approve/Deny (`onApproveAll`/`onDenyAll`, tooltips "Approve all in <title>" /
+  "Deny all in <title>"; hidden while selecting). They act on the group's items as
+  listed (hidden categories on the website excluded). ✓ = `_approveItems`, the
+  Approve selected path: each item approved as suggested, one save. ✗ = `_denyItems`,
+  the Deny selected path: no dialog, one "Denied N items" snackbar with Undo, then the
+  Deleted bin. The buttons are as tall as the title, so the header height doesn't
+  change.
+- The row shows the suggestion as "→ Tomorrow" / "→ Next" (`_suggestionLabel`).
+- Swipe options per group (`_PendingTaskTileState._optionButtons`): Todo/Migros/
+  Lemmon — the day buckets (suggested one bold), deny side Deny +
+  Fri/Sat/Sun/Mon; Backlog/Research — Active/Next/Someday, deny side Deny only;
+  Groceries — "Add to list"; Food diary — "Add to diary"; **Other** — the approve
+  swipe opens the category picker (`_pickGroup`, `SimpleDialog` "Move "…" to"),
+  the item stays pending in the new group. The countdown applies the
+  suggestion, else Today / Next / Add.
+- Approving (`_liftGate` first): Migros adds `worklistToken`, Lemmon
+  `lemmonToken`; Backlog sets `isWish`, Research `isResearch`, both
+  `setBacklogState`; Groceries `GroceryList.add` (an item with the same name
+  already on the list is unchecked instead, the pending one dropped); Food sets
+  `isEatingHabit`. The plain Approve button = "approve as suggested" (a dated
+  item without a suggestion keeps its date untouched, as before); Approve
+  selected runs each item's own approve path with one save (`_batching`).
+- **Long press on a row** (category view) is a `LongPressDraggable<String>`
+  (uid); each section is a `DragTarget` — dropping moves the item there
+  (`_moveToGroup`, suggestion reset). A `_PendingDragNotification` makes the
+  empty pickable sections appear as "Groceries (0)" targets during a drag. In
+  the other views a long press opens the picker; the details panel also has
+  "Move to category". **Multi-select moved to the app bar's Select button**
+  (`_selectionMode`; "0 selected" until something is tapped); long-pressing a
+  group header still selects the group.
+- The details panel adds `Project:`, `Category:` (groceries) and `Transcript:`.
+- **The expanded item is editable (0.2.125)** — `_PendingTaskEditor`, right
+  under the quick tags: Title, Description, Note (text fields owning their own
+  controllers, saved on focus loss and when the panel closes), Tags
+  (`LabelPickerField`, shown *without* the approval gate token, which is always
+  added back — editing tags can't approve by accident) and attachments
+  (`AttachmentsField`), so info can be added before the item reaches its final
+  list. The read-only `Note:` line and tag chips are gone (the fields show
+  them). `_onEdited` saves first and defers the redraw to after the frame when
+  the flush comes from the editor's dispose (mid-build).
+
+**Backlog/Research states** are the existing release tokens (`backlogStateOf`/
+`setBacklogState`): `release-next` = Active, `release-soon` = Next, none =
+Someday. The Wishlist's four release groups keep their mechanics but are titled
+**Active** (was Next release), **Next** (Soon), **Someday** (Backlog), **Done**
+(Newly implemented) — `wishReleaseGroupTitle`. The **Research** tool sections
+its items Active / Next / Someday / Done (checked off), each card with a "Move
+to" menu; `TaskTile` no longer shows a research item's due date (kept in the
+data) nor its release token chip.
+
+**`[Obsidian:]` links** show as an "Open in Obsidian" button
+(`lib/ui/obsidian_link_button.dart`, `url_launcher`) on `TaskTile` and the
+Wishlist tile.
+
+**Food Diary "please verify" dot**: an entry with `Task.needsVerification`
+shows a small blue dot (`Key('food-verify-dot')`) before its title; saving the
+edit dialog clears it.
+
+**Home work-context toggles** (`lib/models/home_contexts.dart`,
+`Config.homeContexts`, persisted in `settings.json` as `homeContexts`): the
+drawer's Home row has an arrow ("Show home filters") folding out **Todo / MLR /
+Lemmon / Backlog** `FilterChip`s (only on the regular home page). Defaults
+todo-only — the home list then looks exactly as before. "Todo" = items with
+neither `mlr` nor `lemmon`; "Backlog" additionally shows wishlist items
+(`Task.isWish`, where approved Backlog items land) whatever the other toggles
+say — with it off, wishes are plain Todo items and the Home rules decide. They live *inside* the one
+home gate: `ItemViews.isOnHomeScreen`/`homeBucket`/`homeVisible` take
+`contexts:` — with toggles, `contexts.allows(task)` alone decides context
+membership and the rest of `isVisibleInMainViews` still applies; with Backlog
+on, a wish's Home filter rules are read without their `Wish` exclude tag (the
+seeded default hides wishes), every other tag still applies. Only the in-app
+home tabs and schedule view pass them (the widget, Wear and sync files never
+do); the `applySearch: false` full-tab callers that renumber `listRanking` see
+every context (`HomeContexts.all`), so a narrowed list never drives the renumbering.
+**Backlog items on Home (0.2.134):** wishes sit in the home tabs and schedule view by due date like every task (0.2.133 placed them by state; reverted). Moving one (swipe/next page, move-to-tab, move-to-weekday, the tile's date picker) changes its date as usual, and the home page's `_syncBacklogStateToDueDate` → `ItemViews.syncBacklogStateToDueDate` also sets its state when the new date is in Next Week (→ Next) or Next Month/Future (→ Someday) — `ItemViews.backlogStateForTab`; Today to Day After leave the state alone. `lemmonToken` (`'lemmon'`) is gated exactly like `mlr`
+(`isVisibleInMainViews(includeLemmonItems:)`; `includeWorklistItems` lifts both,
+for the tool instances). **Tools ▸ Lemmon** is `HomePage(tagFilter: lemmonToken,
+toolTitle: 'Lemmon')`, amber accent instead of Worklist's orange.
+
+**Tools ▸ Groceries** (`lib/ui/groceries_page.dart`): `Task.isGrocery` +
+`Task.groceryCategory`, gated out of every main view (`isVisibleInMainViews`,
+`ItemViews.groceries`, synthetic state tag `Groceries`, not synced). A reusable
+checklist: sections in `GroceryCategoryService` order (`grocery_categories.json`,
+editable on the page's "Edit categories" → `GroceryCategoriesPage`: reorder,
+rename, delete, add; "Other" always exists and comes last, catching unknown or
+deleted categories — `resolve`). Unchecked first, then by name; header "Name
+(open/total)". **Check all** / **Reset list** at the top; checked items are
+never swept at day rollover (`StorageService.loadTaskList` and
+`HomePage._changeDate` skip `isGrocery`); swipe removes (to Archived Items, with
+undo). The add dialog's category defaults to "Automatic" = the category that
+item had last time (`GroceryList.rememberedCategory`), else Other.
+
+**Obsidian pages and research rounds (0.2.124)** —
+`lib/services/voice_inbox_service.dart` (`VoiceInboxService`). One routine
+(Settings → Claude Routine → *Voice inbox routine fire URL/token*,
+`Config.voiceInboxRoutineUrl`/`voiceInboxRoutineToken`; `isConfigured` also
+needs Todoist sync, the routine's only way back) is fired through
+`ClaudeRoutineService` with `MODE: write-page | research-questions |
+research-answers` and the item as JSON (`buildPayload`: `todoistTaskId` from the
+sync map, title, description, note, labels, kind, state, project, transcript,
+source, `qa`). Every fire runs `TodoistSyncService.syncNow` first, so the
+approval is pushed (and an app-made item gets its Todoist task) before the
+routine looks. The routine answers through the item's Todoist **comments**
+(`TodoistApiClient.fetchComments`/`addComment`, `TodoistSyncService.commentsFor`/
+`addCommentFor`): `[Questions]` + numbered lines, `[Done] <link>`; the app posts
+`[Answers]` (`formatAnswers`). `parseReplies` reads the newest of each;
+`refresh(task)` applies them. The `[Done]` comment is the robust copy of the
+link: a local edit that wins a sync conflict rewrites the description and would
+drop an `[Obsidian:]` line — which is why step 3 of `_runSyncBody` also harvests
+that line from the remote before pushing.
+
+Each request is split into a synchronous `mark…` (stamps the task, the page
+saves) and an async `fire…` that never touches the task, so the page's save and
+the sync's own save of `tasks.json` never interleave; `runFire` undoes the mark
+(in memory and on the stored copy) on failure and returns a SnackBar text, and
+the pages reload their list afterwards (the sync may have pulled changes).
+- **Write page:** approving a Backlog item in Waiting for Approval
+  (`_approveToState` queues it in `_pendingFires`, run by `_saveThenFire` after
+  the save — after the single final save for "Approve selected"), or an
+  expanded wish's **Create Obsidian page** button (only when configured and
+  there's no link; then "Claude is writing the Obsidian page…").
+  `Task.obsidianRequestedAt`; the Wishlist checks the `[Done]` reply for waiting
+  items when it opens (`_checkObsidianReplies`).
+- **Research round** (`Task.researchStage`: `ResearchStages` requested →
+  questions → answered → ready, `Task.researchQuestions`): moving a research item
+  to Active (Research page "Move to", or approving it straight into Active)
+  starts it when configured and it has none yet; an Active item without one
+  shows **Start research with Claude**. The card line shows "Claude is preparing
+  questions…", an **Answer N questions** button
+  (`lib/ui/research_questions_page.dart`: one field + mic per question, empty =
+  skipped, **Send answers** → `sendAnswers` comment + second fire), "Claude is
+  writing the research page…", then the tile's Open in Obsidian. The page checks
+  waiting items when it opens and from the app bar's **Check Claude's replies**.
+
+The routine's setup, the vault Action step and the four-mode prompt:
+`docs/proposals/voice-inbox-routine.md`.
+
 ### 4.2g Archived Items vs. the real Deleted bin (two-tier soft delete)
 
 What used to be the single "Deleted Items" list is now **Archived Items**
@@ -782,6 +984,150 @@ step stopped at one real consumer instead of rewriting every view's tile widget 
 config — `TaskTile` (Home) and the other bespoke tiles (Wishlist, Alarms, Countdown, Food
 Diary, Waiting for Approval, Projects) are unchanged.
 
+### 4.2k Approvals website — Waiting for Approval in a browser (0.2.126, ban 0.2.127)
+
+A password-locked website that shows only Waiting for Approval, so items can be
+approved from a computer where the app isn't installed. It is a separate entry point
+of the same Flutter code: `flutter build web --dart-define=WEB_APPROVALS_SITE=true`
+(`Config.webApprovalsSite`), and `main()` runs `WebApprovalsSiteApp`
+(`lib/ui/web_approvals_site.dart`) straight after `ensureInitialized` + `Config.load`.
+None of the phone's startup runs there (backup, alarms, widgets, updates).
+`.github/workflows/deploy-web.yml` builds it on every push to `dev`
+(`--no-web-resources-cdn --pwa-strategy=none --base-href /<repo>/`), runs
+`tool/harden_approvals_site.dart` and force-pushes the output as a one-commit
+`gh-pages` branch. GitHub Pages serves it at `https://<owner>.github.io/<repo>/`.
+It uses a branch instead of the Actions Pages deploy because that deploy's
+`github-pages` environment only accepts the default branch (`main`). `gh-pages` is on
+`prune_old_branches.mjs`'s keep list.
+
+**Security model.** The site is public static files with no data and no secret in
+them. The only secret is the Todoist API token. The person types it once per browser,
+and it stays in that browser's localStorage, encrypted (`TokenVault`,
+`lib/services/web_approvals/token_vault.dart`):
+- **Encryption:** PBKDF2-HMAC-SHA256 with 600 000 iterations and a random 16-byte salt
+  derives an AES-256-GCM key (non-extractable) from a password of at least 12
+  characters. A random 12-byte IV is used. All of it is the browser's own Web Crypto
+  (`vault_crypto_web.dart`, `dart:js_interop` behind a conditional import; the stub
+  throws off the web, and tests pass a fake `VaultCrypto`).
+- **Stored record:** `web_approvals_vault` = `{v, kdf, iterations, salt, iv,
+  ciphertext}`. The plain token is never written anywhere. A wrong password fails
+  GCM's tag check.
+- **Wrong passwords — silent ban (0.2.127):** the 2nd wrong password in a row deletes
+  the vault at once. It also bans the browser for 90 days (`web_approvals_state` = the
+  ban's end time) without saying so. While banned:
+  - the lock screen looks normal;
+  - every attempt, the right password included, answers "Wrong password" after
+    `fakeCheckTime` (1.2 s, about one PBKDF2 run);
+  - `create` refuses, so the site can't be set up again;
+  - *Forget this browser* deletes nothing more and leaves the ban in place.
+
+  The right password resets the count. There is no visible attempts-left warning,
+  because it would give the ban away. The ban lives in that browser's storage
+  (there's no server), so clearing the site's data lifts it. By then the token is
+  already gone, and clearing site data is also how the owner recovers from their own
+  two typos. *Forget this browser* (on the lock screen and in the page menu) deletes
+  the vault on demand.
+- **Locking:** after unlocking, the task list lives only in the tab's memory
+  (`Config.webRealData`, the same in-memory store as a Chrome dev run;
+  `loadRealTodoistData` in `real_data_loader.dart` is shared with
+  `WebDataChoicePage`). **Lock** in the menu, or 15 minutes without a pointer or key
+  event, pushes any pending sync and then reloads the tab, which wipes the token and
+  the tasks from memory.
+- **Browser hardening:** the browser shows "Leave site?" while a sync is running. The
+  page refuses to render inside a frame (`isFramed`), because `frame-ancestors`
+  can't be set from a `<meta>` tag.
+- **`tool/harden_approvals_site.dart`** adds, in `<meta>` tags because Pages can't
+  send headers:
+  - a Content-Security-Policy: scripts only from the site itself plus
+    `wasm-unsafe-eval` for CanvasKit; network only to the site, `api.todoist.com`
+    and `fonts.gstatic.com` (Flutter's Roboto fallback); no objects, no forms,
+    `base-uri 'self'`;
+  - `referrer no-referrer`;
+  - `robots noindex` plus a `robots.txt`.
+- **No content injection:** task text is drawn on the canvas, never inserted as HTML.
+
+**The queue is the Todoist label.** In the app the approval gate is a local decision:
+every Todoist task the phone has never seen gets `Waiting_for_approval` locally
+(§4.2e). A fresh browser has never seen any task, so on the site
+`TodoistSyncService._gatesNewTasks` gates only tasks whose Todoist labels carry the
+token (the voice-inbox routine sets it, §4.2j). Tasks typed straight into Todoist
+without the label wait on the phone only.
+
+**What the site shows.** `WaitingApprovalPage(site: ApprovalSiteOptions(...))`, with
+its own app bar: sync status/Sync now, then a menu with Lock and Forget this browser.
+These categories are hidden (`hiddenOnSite`, `web_approvals_site.dart`), and a footer says "N more in … —
+approve those in the app":
+- **Food and Groceries** become local-only items, and the next sync deletes them on
+  Todoist. In the tab's memory they would simply be lost. On the site
+  `_turnIntoFoodEntry` does nothing, so food items stay pending for the phone.
+- **Research**'s flag doesn't sync.
+
+**Backlog is listed (0.2.132).** It used to be hidden as well, which left the site
+nearly empty, because the voice-inbox routine sorts most items into Backlog. Its
+approval syncs: the item moves to the Wishlist project, its Active/Next/Someday
+state travels as a label, and `approvedAt` goes in the trailer. The only thing the
+site can't do is fire the Obsidian-page routine, which is configured on the phone.
+The phone's Wishlist offers **Create Obsidian page** for the item instead.
+
+**Saves and syncs never interleave** (`ApprovalsSyncCoordinator`,
+`lib/services/web_approvals/approvals_sync.dart`). The page and the sync both
+read-modify-write the whole list. A page save landing over a sync would drop the
+tasks that sync pulled, and step 1 of the *next* sync deletes a mapped task that's
+missing locally.
+- **One lock:** `exclusive` is a single lock. Every page save takes it, and so does
+  every sync.
+- **Merged saves:** the page saves `mergeOver(stored, page, baseline)`, which applies
+  only the uids whose JSON changed since the page's last load or save, and drops the
+  uids the page removed. Unchanged tasks keep the page's own instances, so an open
+  editor stays attached.
+- **Removed remotely wins:** a task the sync removed stays removed even if the page
+  touched it.
+- **When syncs run:** after each save, debounced to 6 s, which is longer than a
+  deny's undo window, so an undone deny never reaches Todoist. Also every 2 minutes,
+  on the cloud button, and before a lock. After each sync, `revision` makes the page
+  merge in what was pulled.
+- **No bin on the web:** the deny's Deleted-bin write is wrapped, because the web has
+  no file storage.
+
+**Approved/denied elsewhere (the phone side).**
+- **Approve:** the approving side writes `approvedAt` (UTC) into the metadata
+  trailer (`_buildRemotePayload`, only once the gate is gone). The trailer is outside
+  both fingerprints, so this causes no extra pushes. `_approvedElsewhere(meta,
+  remoteLabels)` is set when the trailer has `approvedAt` and Todoist no longer has
+  the gate label.
+  - `_applyRemoteToLocal` then lifts the local gate instead of keeping the item
+    pending. A label removed by hand in Todoist, without `approvedAt`, still keeps it
+    pending, as before.
+  - `_taskFromRemote` doesn't gate such a task at all.
+- **Deny:** the website deletes the task on Todoist. Step 5 of a sync now sends a
+  vanished task that still carries the gate to the Deleted bin (`deletedAt`,
+  recoverable) instead of marking it done.
+- **Repairs for older builds (0.2.130):** an approval pulled by a build older than
+  0.2.126 left the item pending, with fingerprints already matching the remote. Step 3
+  therefore checks `approvedRemotely` on every run: the item is still gated here,
+  while the remote trailer has `approvedAt` and the remote labels don't carry the
+  gate. That case is pulled as a remote change even when neither fingerprint moved,
+  and it wins over a local edit of the pending item, so the gate is never pushed
+  back. A denial seen by an older build left a gated item `isDone` without a
+  mapping, stuck in Waiting for Approval. After step 5, such items go to the bin
+  with the other denials.
+- **The app's page syncs itself (0.2.130).** Previously the phone pulled only on
+  app quit and on the home list's pull-down, so the page showed the state from
+  before anything approved elsewhere.
+  - **When:** `WaitingApprovalPage` (app mode) runs `_syncFromTodoist` after its
+    first load and on pull-down (`RefreshIndicator`; the empty state is a
+    scrollable `ListView` so pull-down works there too).
+  - **While it runs:** a `LinearProgressIndicator` (key `approval-syncing`) shows
+    and an `AbsorbPointer` blocks taps. `_save` only sets `_dirtyDuringSync`, so
+    the page never writes between the sync's read and its write.
+  - **After it ends:** the page's own changes since the start (a swipe countdown
+    firing) are merged over the synced list with
+    `ApprovalsSyncCoordinator.mergeOver` and saved.
+  - **Failure:** a failed manual sync shows "Todoist sync failed: …".
+  - **Leaving early:** when you leave the page mid-sync, the home page reloads once
+    on return and again after `TodoistSyncService.whenIdle()`. Otherwise its list,
+    missing what the sync pulled, would be saved over it.
+
 ### 4.3 Home page UX
 
 Six day buckets (`Config.tabs`): **Today, Tomorrow, Day After Tomorrow, Next Week, Next
@@ -910,12 +1256,12 @@ spanning the top is always attached.
 
 **Drawer (reordered 0.2.33):** Home, Settings, Waiting for Approval, Food Diary, Tools ▸
 (Alarms, Weekly Hours Planner, Projects, Wishlist, Research, Chronize, Countdown,
-Productivity Stats, Usage Data, Fitness Activity, Test Results, Worklist, MP3
-Downloader — most-used first), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
+Productivity Stats, Usage Data, Fitness Activity, Test Results, Worklist, Lemmon,
+Groceries, MP3 Downloader — most-used first), Changelog, About, Archived Items (→ Deleted bin, §4.2g), App Logs,
 Startup Times, Widget Previews (dev build only). Food Diary is a standalone entry (own
 `ListTile`, gated on `Config.isFeatureEnabled('food_diary')`) rather than a `_toolEntries`
 member, so it always sits above Tools instead of inside it.
-**Home** (0.1.233) is `_goHome()`: pop every page stacked on
+**Home** (0.1.233; toggles arrow 0.2.123 — see §4.2j) is `_goHome()`: pop every page stacked on
 the home route, clear an active search, and return to the start tab
 (`Config.startTabIndex`) and start view (`Config.startInScheduleView`, only when the
 schedule-view feature is on) — so it always lands on the same familiar screen rather than
@@ -1122,10 +1468,27 @@ tag" note.
 **Section order and frame (0.2.118, the layout shared by every Mfficiency app, Vesta Immo's
 Settings page):** Appearance, Mode & features, Filtering rules, Notifications, Tasks, Streak,
 Dice timer, SMS report, Widget, Todoist sync, Sync & export, Weekly Hours Planner, Wishlist
-build, Claude Routine, **Updates** (second to last) and **Backup & data** (last; it was
-"Backup"). The order of `_sectionTitles` is the page order: section indexes, the search
-registry, the visibility switch, the chip row and the scroll tracking all go by it, so a new
-section is inserted before Updates and the indexes after it shift. Cards have a 4 px gap
+build, Claude Routine, **Releases** (0.2.138), **Debugging** (0.2.137), **Updates** and
+**Backup & data** (last; it was "Backup"). The first rows of Appearance, and all rows of
+Debugging, Updates and Backup & data (nothing else goes there since 0.2.138), are the
+same in every Mfficiency app (flutter_app_template docs/CONCEPT.md §5, package 1.10.0;
+`settings_layout_test.dart` pins them): Appearance › Dark mode, Compact mode, Time format,
+Date format, then Minimalist mode, Use tab icons, Red dot for failed tests; Debugging ›
+Send a report (`ProblemReportSendTile`), GitHub token (`ProblemReportSettingsTile`);
+Updates › Check automatically, Check for updates (`UpdateCheckTile`), GitHub token
+(`UpdateTokenTile`); Backup & data › Back up everything, Restore from a backup, Backup
+location, Automatic backup, Last backup (`FullBackupTiles` on Android, see §2 Automatic
+backup). Releases › Show what's new after an update (`Config.whatsNewEnabled`, on by
+default): the first start of a new version shows, once, a sheet with the changelog entries
+since the version the user had before (`lib/ui/whats_new_sheet.dart`, `WhatsNew`: the last
+version in the prefs key `whats_new.last_version`, for installs from before 0.2.138 the data
+files' `last_run_version.txt`; worked out after the first frame, shown once the intro or a
+first-start picker is closed; a fresh install shows nothing). The GitHub token rows say only
+"Token set" / "No token"; their dialog (the package's `GithubTokenDialog`, also on About ›
+Other apps) has the field first with show/copy, one short line, the steps folded under "How to
+get a token", and Close. The order of `_sectionTitles` is the page order: section indexes, the
+search registry, the visibility switch, the chip row and the scroll tracking all go by it, so a
+new section is inserted before Releases and the indexes after it shift. Cards have a 4 px gap
 (`margin: bottom 4`), end with `SizedBox(height: 8)` when open, the pinned chip header is 64
 high (padding 12/10), the content is centred at most 820 wide (`_contentMaxWidth`, through
 the `SliverPadding`'s side padding so the list stays lazy) and ends with `SizedBox(height:
@@ -1137,9 +1500,11 @@ monochrome ink-on-paper `buildMinimalistTheme(brightness)` in `main.dart` — pu
 only, transparent `surfaceTint`, no ink splashes, selected chips underlined via a
 `WidgetStateTextStyle` label instead of a colour fill; the orange/red/green swipe
 backdrops in `task_tile.dart`/`home_page.dart` turn neutral ink; combines with dark
-mode), icon tabs, "Red dot for failed tests" (`showFailureDotOnMenu`, default **off**:
+mode), compact mode (0.2.137, `Config.compactMode`, default off: `applyCompactMode` in
+`main.dart` gives every theme compact visual density, compact list tiles, a 52 high app bar
+and dense inputs; tap targets stay padded to 48), icon tabs, "Red dot for failed tests" (`showFailureDotOnMenu`, default **off**:
 marks the home hamburger icon while the newest test run has unacknowledged failures,
-see §4.3), 24-hour time (default on), date format (6 choices,
+see §4.3), time format (24-hour / 12-hour, `use24HourFormat`, default 24-hour), date format (6 choices,
 default `dd.MM.yy`). Tasks: add-to-top, "New tasks go to" (`defaultAddTabIndex`, default
 "Current tab", see §4.3), swipe-left-delete, default delay 0–10 s slider,
 start tab (simple mode hides the tool-related entries, see §4.6), default start page
@@ -3419,16 +3784,16 @@ in App Logs → Todoist — onboarding has already finished by then.
     above the installed versionCode (the same rule Android applies), whatever its x.y.z or
     channel. So the phone always ends up on the newest built commit of any branch. The
     updater never reads `github_releases/`.
-  - **Optional GitHub token (0.2.121, package 1.6.3):** Settings → Updates → "GitHub token
-    (optional)" ("Only needed if this app's repo is private") pastes, replaces or removes a
-    read-only token (fine-grained, `Mfficiency/best_todo_2` only, Contents: read). It lives in
+  - **Optional GitHub token (0.2.121, package 1.6.3; the package's `UpdateTokenTile` since
+    0.2.137):** Settings → Updates → "GitHub token" pastes, replaces or removes a
+    read-only token (fine-grained, `Mfficiency/best_todo_2` or all app repos, Contents: read). It lives in
     `flutter_secure_storage` (key `updates.github_token`, Android Keystore-encrypted, never in
     SharedPreferences/settings.json/the full backup/the log); `AppUpdates.readToken` is the
-    package's `tokenProvider`, `AppUpdates.saveToken` stores/removes it and calls the
-    controller's `reloadToken()` (checks at once). `privateRepo` stays **false**: without a
+    package's `tokenProvider`, `AppUpdates.writeToken` stores/removes it (the tile saves as
+    it is typed, then calls the controller's `reloadToken()`, which checks at once). `privateRepo` stays **false**: without a
     token everything is anonymous exactly as before; with one, checks send it and (package
     1.6.3) the APK downloads through the asset API, so updates keep working if the repo is
-    made private later. The row shows only "Saved on this phone (••••••••)", never the value.
+    made private later. The row shows only whether a token is set, never the value.
   - **Shared updates package (0.2.107 / Best Music 0.3.27; the same code as Hally Remote,
     BestCollage, Vesta Immo and the template):** `packages/mfficiency_updates` is a Flutter
     plugin (Dart controller + widgets, Android installer) **vendored** from
@@ -3448,8 +3813,8 @@ in App Logs → Todoist — onboarding has already finished by then.
       `AppUpdates.controller`, one `UpdateController` per app: `UpdateConfig` with
       `appName` "BestToDo" / "Best Music" (APK file `<name>-<x.y.z>-<build>.apk`), the
       running version and versionCode, `channel` (`Config.channel`, shown as "· dev"), repo
-      `Mfficiency/best_todo_2`, `tagPrefix` `v` / `music-v`, `checkInterval` and
-      `pollInterval` 15 minutes (GitHub's anonymous limit is 60 requests/hour), `autoCheck`
+      `Mfficiency/best_todo_2`, `tagPrefix` `v` / `music-v`, the package's timing (below) with
+      `backgroundCheck: updateCheckInBackground`, `autoCheck`
       = BestToDo's "Automatically update" switch (`Config.autoUpdateCheckEnabled`, same
       stored key and value as before) / always on for Best Music (no switch); store =
       `SharedPreferencesUpdateStore`; strings = the package's English ones with the app's
@@ -3481,14 +3846,76 @@ in App Logs → Todoist — onboarding has already finished by then.
       file in `BestToDo/` on shared storage; the user's own files), caches, and the native
       SharedPreferences of home_widget / flutter_local_notifications / the Wear command
       queue (rebuilt from the data). Settings → Backup & data starts with `FullBackupTiles`
-      ("Back up everything", "Restore from a backup"); after the first frame a new install
+      (Back up everything, Restore from a backup, Backup location, Automatic backup
+      off/daily/weekly — default weekly, `startSchedule()` after the first frame —, Last
+      backup); after the first frame a new install
       is offered a restore once (`offerRestore`, `_startUpdates`). Restore checks the
       applicationId, backs up the current data first, replaces it all and restarts.
       Android only. `PreUpdateBackup` (§4.2f) still runs before a new version's first
       write.
-    - **Behaviour (the package's):** checks on the first frame when the last check is 15+
-      minutes old, every 15 minutes while in the foreground, **when the app comes back to
-      the foreground** and the last check is 15+ minutes old, when the switch is turned on,
+    - **Report a problem to Claude (0.2.135, package 1.7.0):** a **double tap on the
+      drawer header** ("BestToDo v<x.y.z>", `home_page.dart`, wrapped in the package's
+      `ProblemReportTrigger`, `Key('problemReport.trigger')`; a single tap does nothing, as
+      before) opens the package's sheet "Report a problem to Claude": a description field,
+      an "Include the app's logs" switch (with the line count) and "Send to Claude".
+      `lib/services/problem_reports.dart` (`ProblemReports`) holds only the app's config:
+      `ProblemReports.instance` (made on first use; tests set a fake) =
+      `ProblemReporter(ProblemReportConfig(appName 'BestToDo', Config.version/buildNumber/
+      channel, githubRepo AppUpdates.githubRepo))`, the token in `flutter_secure_storage`
+      (`AppUpdates.secureStorage`, key `problem_report.github_token`), links opened with
+      url_launcher (external app), and `collectLogs`: one `===== <source> =====` header per
+      source, the most useful last (the package keeps the newest end when the body is too
+      long) — the folder-sync history (`sync_log.json`), the Todoist sync history
+      (`todoist_sync_log.json`), oldest run first, the newest 30 000 characters of
+      `alarm_log.txt` (§5.3), then the in-memory app log (`LogService`, App Logs › Events,
+      last 24 h). A source that can't be read says so. Send creates a GitHub issue in
+      `Mfficiency/best_todo_2` labelled `claude-fix`, body starting with
+      `<!-- mfficiency-problem-report -->`: the description, version/build/channel,
+      platform, time and the logs (cut to GitHub's 65 536 characters, the token blanked
+      out). With a token (Settings → Debugging → **GitHub token**, the package's
+      `ProblemReportSettingsTile`, below **Send a report**: says whether one is saved; tapping it explains how to get
+      a fine-grained token — repository access this repo or all app repos, Repository
+      permissions › Issues: Read and write, nothing else — with a "Create a token on GitHub"
+      button, the field saved as typed, Remove, Close, and the one-time repo secret below)
+      the app posts it through the API; without one GitHub's new-issue page opens in the
+      browser filled in (logs shortened to fit the URL) and the owner taps Create.
+      `.github/workflows/claude-fix.yml` (copied from the template; Flutter 3.29.2 as in
+      `flutter_test.yml`) runs `anthropics/claude-code-action` on issues the owner, a member
+      or a collaborator wrote — opened with the marker, or a hand-written one given the
+      `claude-fix` label: Claude reads the issue, fixes the code following CLAUDE.md, bumps
+      version + changelog, runs `flutter analyze --no-pub` and `flutter test`, merges into
+      `dev` and pushes, comments and closes the issue; then the job runs
+      `gh workflow run laptop-build.yml --ref dev` (a push with the workflow token triggers
+      no workflow; the same code twice publishes nothing), so the fix ships as the next dev
+      update. A failed run comments on the issue. **Once per repo:** the Actions secret
+      `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`, Claude Pro/Max) or
+      `ANTHROPIC_API_KEY` (console.anthropic.com), and the Claude GitHub app installed.
+      Tests: `test/update/problem_report_test.dart`.
+    - **Other apps (0.2.136, package 1.8.0):** the **last item of About**
+      (`about_page.dart`, a `Card` `Key('about.otherApps')` below the update section) is the
+      package's `OtherAppsLink` ("Other apps", `Key('otherApps.link')`), which pushes its
+      `OtherAppsPage`: every other Mfficiency Android app from the package's catalogue
+      `mfficiencyApps` (Best Music, BestCollage, BestFloory, Hally Remote, Vesta Immo, Best
+      Watch, MostlyGoodNews; BestToDo itself left out by `currentAppId`
+      `AppUpdates.appId` = `com.mfficiency.best_todo_2`), each with installed or not (the
+      plugin's `packageInfo`, its manifest `<queries>`), the newest release with an APK
+      (highest build of any channel) and **Install** / **Update** / **Open** (silent download
+      like an update, then Android's installer) or **Open on GitHub** (off a phone, no APK,
+      or a private repo without access). Pull-down asks again. The app only configures it:
+      `AppUpdates.otherApps` (one `OtherAppsController`, made on first use; tests set a
+      fake) = `createOtherApps()` on the running `AppUpdates.controller`'s `http` and
+      `platform` (the package defaults with url_launcher as `openUrl` before it exists),
+      `fallbackToken` = `ProblemReports.instance.token` (a token with Contents: Read-only as
+      well reads the private apps), User-Agent `BestToDo-other-apps`. The page's own token
+      (key icon) is the package's (SharedPreferences `other_apps.github_token`).
+      Tests: `test/update/other_apps_test.dart`.
+    - **Behaviour (the package's, 1.11.0):** checks on the first frame of every start,
+      every 5 minutes while in the foreground, **when the app comes back to the foreground**
+      and the last check is a minute old or more, **every hour while the app is closed**
+      (Android's JobScheduler runs `updateCheckInBackground` in a headless engine: check and
+      silent download only, never the installer; skipped while the app is open, stopped
+      when it opens; the token for a private repo is handed over encrypted), when the
+      switch is turned on,
       on pull-down in the Changelog (`refresh`) and from "Check for updates" (`checkNow`).
       Only releases of the app's tag prefix **with an APK asset** count (a release whose APK
       is still uploading is never offered); equal build numbers: main before staging before

@@ -1,5 +1,11 @@
 # Pocket → Todoist ingestion routine — the thing that fills the approval queue
 
+> **Replaced on 28 Oct 2026 — see "Hourly sort from Pocket" at the end.** The
+> trigger `trig_01ApvNY8ogVMRRL33TUi3J9L` described below now runs the voice
+> inbox's *sort* (categories + `[Group:]`/`[Suggest:]` markers) hourly, still
+> straight from Pocket and with the same state task. Its old prompt is kept
+> verbatim at the end of this note.
+
 Every task in Tools ▸ **Waiting for Approval** (SPEC §4.2e) that wasn't typed by
 hand into Todoist comes from one external, out-of-repo automation: a **Claude
 Routine** (a Claude Code Remote scheduled trigger, *not* code in this repo,
@@ -117,3 +123,116 @@ know what data actually reaches the app from this routine.
   local-only) `pendingSourceTitle`.
 - Never required: a task with no marker and no non-Inbox project just groups
   under "Unspecified" — existing behavior, unaffected.
+
+## Hourly sort from Pocket (28 Oct 2026) — what actually runs now
+
+**What went wrong.** The voice-inbox design (`docs/VOICE_INBOX_HANDOVER.md`) has
+the *vault* repo's Pocket-sync GitHub Action fire the "BestToDo voice inbox"
+routine (`trig_01CgX28iTSkpJTsPUYNLkzbh`, no schedule) with `MODE: sort` after
+each new transcript.
+- **Setup stopped halfway:** the old routine was disabled (handover step 5) at
+  06:34 UTC on 28 Oct, but the vault Action step (step 4) was never added, and
+  the routine had no vault repo attached (step 2).
+- **Result:** the new routine never fired, and that morning's recordings never
+  reached Todoist.
+
+**The fix.**
+- **What changed:** the old trigger `trig_01ApvNY8ogVMRRL33TUi3J9L` kept its
+  Pocket + Todoist connectors (connectors can't be attached to a trigger from a
+  session on this account; only the routines UI can). It was renamed "BestToDo
+  voice inbox — hourly sort from Pocket", its prompt replaced by a
+  Pocket-reading version of `MODE: sort`, and it was re-enabled on an hourly
+  cron.
+- **What it does each run:**
+  - same state task `6hM6jF45GHVfpfVp` (`processed_ids`, `last_sync_timestamp`);
+  - looks back 3 h for late transcripts;
+  - splits recordings into English-titled items with the marker lines (§4.2j);
+  - food gets only `AI` and a due time;
+  - also sorts hand-typed pending tasks.
+- **What it leaves out:** no `[Project:]`/`[Transcript:]` lines, since it has no
+  vault access. Write-page mode finds the project itself.
+- **What still uses the original routine:** the voice-inbox routine stays as is
+  for the app's `write-page`/`research-*` fires.
+- **Leftover:** the vault Action step is no longer needed for sorting. Don't
+  add it unless this hourly task is switched off, or every item arrives twice.
+
+**Two lessons from the switch-over (same day).**
+- **Overlapping runs:** a run with the old prompt (12:33 UTC) and the first
+  run with the new one (12:37) overlapped. The new one read the state task
+  before the old one had saved, and would have re-created the same items in
+  new wording; it was stopped before it wrote anything. Never start a run
+  while another is still going. Their only lock is the state task.
+- **State saved wrapped in text:** the old run also wrapped the state JSON in
+  extra text. The prompt now reads a JSON object out of surrounding text and
+  always writes back pure JSON. STEP 6 (give pending items without `[Group:]`
+  a category) now runs on *every* run, not only when there were new
+  recordings, so items made by the old prompt get sorted too.
+
+### The old routine's prompt (verbatim, before 28 Oct 2026)
+
+```
+Extract action items from Pocket conversations and upload to Todoist (APPROVAL WORKFLOW with DURABLE SYNC TRACKING).
+
+WORKFLOW: All extracted tasks go to "Waiting_for_approval" queue. Only process NEW conversations since last sync.
+
+STEP 0: LOAD DURABLE STATE FROM TODOIST TASK
+- Fetch Todoist task ID: 6hM6jF45GHVfpfVp (Pocket Sync State)
+- Parse JSON from task description to extract:
+  * processed_ids: array of conversation IDs already processed
+  * last_sync_timestamp: ISO 8601 timestamp
+- If task is not found or parse fails, start with empty processed_ids array
+- Use last_sync_timestamp (or 1 hour ago if missing) as the time window cutoff
+
+STEP 1: DETERMINE TIME WINDOW
+- Extract last_sync_timestamp from Todoist task description
+- Calculate time window: from last_sync_timestamp to now
+- Only fetch conversations created AFTER last_sync_timestamp
+
+STEP 2: FETCH ONLY NEW POCKET CONVERSATIONS
+- Use search_pocket_conversations in recency mode with recordingDateAfter = last_sync_timestamp
+- Limit to last 5-10 conversations
+- This ensures only truly NEW conversations are processed
+- Filter out any conversation IDs already in processed_ids list (safety check)
+
+STEP 3: EXTRACT ACTION ITEMS WITH NORMALIZATION
+For each NEW conversation only:
+- Extract action items/todos from transcript
+- Look for patterns: "add to list", "put on list", "make", "fix", "buy", "research", "call", "remember to", "look into", "investigate", etc.
+- NORMALIZE each item:
+  * Remove filler words (um, uh, so, like, etc.)
+  * Convert to lowercase for comparison
+  * Trim whitespace
+  * Remove redundant qualifiers
+  * Example: "maybe try to research X" → "research X"
+- Infer tags: bike-gear, running-fitness, todo-app, research-notes, finance, to-buy, immediate, home, dev, admin, obsidian, mlr
+- IMPORTANT: Check EVERY item for Migros/MLR references. If an item relates to Migros or MLR (any context, any mention), ALWAYS include the "mlr" tag
+- Note the conversation's own title if Pocket provides one; if not, compose a short (3-6 word) phrase summarizing what the conversation was about. You will need this per-conversation label in STEP 6 — compute it once per conversation and reuse it for every item extracted from that same conversation.
+
+STEP 4: DEDUPLICATE WITHIN APPROVAL QUEUE ONLY
+For EACH extracted action item:
+- Search Todoist for tasks with "Waiting_for_approval" tag using exact normalized text 
+- If exact match found with approval tag → SKIP (don't create duplicate in queue)
+- If no match → PROCEED to create
+
+STEP 5: SMART FILTERING
+Before creating task, apply filters:
+- Filter out vague items: "do something", "think about it", "maybe later" → SKIP
+- Filter out items < 8 characters (too vague)
+- Filter out items > 200 characters (too long/complex)
+
+STEP 6: CREATE TASKS IN TODOIST WITH APPROVAL TAG
+For all items that pass filters:
+- Create task with content = the normalized action item text
+- Set the task's description field to exactly one line: "[Source: <conversation label>]" using the per-conversation label you computed in STEP 3 (its own title, or your short composed phrase). This MUST be the first line, in that exact bracket format, with nothing else added after it — BestToDo's app parses this marker to show "which conversation created this pending item" and to group the approval queue by conversation. Do not omit it and do not add any other text to the description.
+- Add tags: "AI" + "Waiting_for_approval" + inferred content tags (bike-gear, todo-app, mlr, etc.) — ALWAYS include "mlr" tag if item relates to Migros or MLR
+- Set due date: today
+- Project: Inbox
+
+STEP 7: MARK CONVERSATIONS AS PROCESSED
+(add every processed conversation id to processed_ids, whether or not it produced tasks)
+
+STEP 8: UPDATE DURABLE STATE IN TODOIST TASK
+- Rewrite task 6hM6jF45GHVfpfVp's description JSON with processed_ids (old + new) and last_sync_timestamp = now; nothing else.
+```
+(STEP 7/8 and the trailing "approval workflow"/report sections are abridged; the
+behaviour they describe is in "What it does" above.)

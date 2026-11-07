@@ -1,5 +1,101 @@
 # Changelog
 
+## 1.12.0 - 2026-11-05
+
+- **Interrupted downloads start again by themselves:** in the app after
+  10 s, 30 s, 1, 2 and then every 5 minutes (`UpdateController.retryDelays`),
+  at once when the app comes back, and in the background: a cut-off
+  download, or leaving the app while one runs, schedules a one-off job
+  (`UpdatePlatform.scheduleDownloadResume`, Android `UpdateCheckJob`) that
+  runs once a network is there and, while the APK is still `incomplete`,
+  again with back-off; each try continues the `.part`.
+- **One writer at a time:** `<name>.part.lock`, touched every few seconds
+  while downloading (`IoApkDownloader.lockStale`, 30 s), so the app and the
+  background job never write the same file.
+- **Update all** (About, under Other apps): `UpdateAllTile` in
+  `OtherAppsLink`, `OtherAppsController.updateAll`: every installed
+  Mfficiency app with a newer release downloads (three tries each), then
+  Android's installer opens for one after the other (the next when the user
+  is back), this app last (`OtherAppsController.selfUpdates`). New
+  `OtherAppsStrings.updateAll*` texts.
+- Staged APKs of other apps stay a day, so several can wait for Android's
+  installer at once.
+
+## 1.11.0 - 2026-11-05
+
+- **The same update checks in every app:** every time the app opens
+  (`checkInterval` now defaults to zero), every 5 minutes while it is open
+  (`pollInterval` default 5 min), when it comes back after a minute or more
+  (new `resumeCheckAfter`, 1 min; before: `dueAfter`) and **every hour
+  while it is closed**.
+- **Background check** (`UpdateConfig.backgroundCheck`,
+  `backgroundInterval`, `UpdateBackground`, `UpdateController.checkInBackground`,
+  Android `UpdateCheckJob` + `RECEIVE_BOOT_COMPLETED`): JobScheduler runs the
+  app's entry point in a headless engine; it checks and downloads silently,
+  never opens the installer, is skipped while the app is open and stopped
+  when it opens. `start()` schedules it while "check automatically" is on.
+- `UpdatePlatform.scheduleBackgroundCheck` / `cancelBackgroundCheck`.
+
+## 1.10.0 - 2026-10-30
+
+- **One GitHub token dialog** (`GithubTokenDialog`, `GithubTokenStrings`)
+  for problem reports, updates and other apps: the field first with show
+  and copy buttons, one short line (`summary`) under it, the full steps
+  folded under "How to get a token"; Close always visible; saved as typed.
+- Token rows say only "Token set" / "No token".
+- Breaking: `ProblemReportStrings` and `OtherAppsStrings` lose
+  `createToken`, `removeToken` and `close` (now in `tokenDialog`) and gain
+  `setupSummary` / `tokenSummary`; `UpdateTokenStrings` loses
+  `createToken`, `removeToken`, `close` (now `dialog`) and its `summary`
+  takes the repo.
+
+## 1.9.0 - 2026-10-30
+
+- **The same settings rows in every app** (README.md › Settings rows):
+  `ProblemReportSendTile` (Debugging › Send a report), `UpdateTokenTile`
+  (Updates › GitHub token, saved as typed, checked at once), and the full
+  backup split into `FullBackupNowTile`, `FullBackupRestoreTile`,
+  `FullBackupLocationTile`, `FullBackupScheduleTile`, `FullBackupLastTile`
+  (`FullBackupTiles` is now those five in that order).
+- **Automatic full backups:** `FullBackup.schedule` (off, daily, weekly;
+  `FullBackupConfig.defaultSchedule`, weekly), `setSchedule`,
+  `backupIfDue()` and `startSchedule()` (after the first frame and on every
+  resume).
+- `ProblemReportSettingsTile` is titled "GitHub token" (key icon).
+- Fix: on Windows an interrupted download started over (its `.part` was
+  deleted: paths compared with mixed separators).
+- Breaking: `FullBackupStrings.lastBackup` is gone (the Last backup row uses
+  `lastTitle`, `lastNever` and `dateTime`); `backupSubtitle` no longer
+  names the folder (the Backup location row does).
+
+## 1.8.0 - 2026-10-30
+
+- **Other apps:** `OtherAppsLink` (the row at the bottom of About) opens
+  `OtherAppsPage`: every other Mfficiency Android app (`mfficiencyApps`,
+  this one left out) with whether it is installed, its newest release
+  (highest build of any channel, its own tag scheme) and Install / Update /
+  Open. The download is silent like an update's (own folder
+  `<cache>/other_apps`, then moved to `<cache>/updates` for the
+  installer), then Android asks. Private repos need a token with Contents:
+  Read-only (the page's key icon, or the app's `fallbackToken`, e.g. the
+  problem-report token); without one, or off a phone, Open on GitHub.
+  Native: `packageInfo`, `launchApp`; the manifest's `<queries>` lists the
+  apps. `OtherAppsStrings` (English defaults).
+- The problem-report token help mentions adding Contents: Read-only so one
+  token serves both.
+
+## 1.7.0 - 2026-10-29
+
+- **Problem reports to Claude:** `ProblemReporter` sends the user's
+  description, the app's facts and its logs as a GitHub issue labelled
+  `claude-fix` (body marked `<!-- mfficiency-problem-report -->`), which
+  the repo's `claude-fix.yml` workflow hands to Claude to fix and merge
+  into dev. With a fine-grained token (Issues: read and write) straight
+  from the app; without one GitHub's new-issue page opens filled in.
+  `ProblemReportTrigger` (double tap on the version in the menu),
+  `showProblemReport` (the sheet), `ProblemReportSettingsTile` (the token
+  and how to get it), `ProblemReportStrings` (English defaults).
+
 ## 1.6.3 - 2026-10-24
 
 - A public repo with a token downloads through the asset API too, so an

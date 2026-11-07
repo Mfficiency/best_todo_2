@@ -37,8 +37,11 @@ class UpdateConfig {
     this.autoCheckChanges,
     this.includePrereleases = _yes,
     this.legacyBuildLimit = 0,
-    this.checkInterval = const Duration(hours: 24),
-    this.pollInterval = Duration.zero,
+    this.checkInterval = Duration.zero,
+    this.pollInterval = const Duration(minutes: 5),
+    this.resumeCheckAfter = const Duration(minutes: 1),
+    this.backgroundCheck,
+    this.backgroundInterval = const Duration(hours: 1),
     this.firstCheckDelay = const Duration(seconds: 3),
     this.releasesPerPage = 30,
     this.releaseListCache = const Duration(hours: 1),
@@ -123,11 +126,32 @@ class UpdateConfig {
   /// (from when they were separate apps). 0 = all.
   final int legacyBuildLimit;
 
-  /// The check at start runs when the last one is older than this.
+  /// The check at start runs when the last one is older than this; zero
+  /// (the default) = every time the app opens.
   final Duration checkInterval;
 
-  /// While the app is in the foreground, check this often; zero = never.
+  /// While the app is in the foreground, check this often (default every
+  /// 5 minutes); zero = never.
   final Duration pollInterval;
+
+  /// Back in the foreground (the app opened again), check when the last
+  /// check is older than this (default 1 minute, so switching back and
+  /// forth doesn't ask GitHub each time). Needs [checkOnResume].
+  final Duration resumeCheckAfter;
+
+  /// The app's background entry point for the check while the app is
+  /// closed: a top-level function marked `@pragma('vm:entry-point')` that
+  /// calls [UpdateBackground.run] with the same controller the app builds.
+  /// Set, [UpdateController.start] has Android run it every
+  /// [backgroundInterval] (with a network; Android may shift it a little)
+  /// while "check automatically" is on. It checks and downloads a newer
+  /// build silently; Android's "Update this app?" waits until the app is
+  /// opened. Null = no background checks.
+  final Future<void> Function()? backgroundCheck;
+
+  /// How often [backgroundCheck] runs while the app is closed (default
+  /// every hour; Android's minimum is 15 minutes).
+  final Duration backgroundInterval;
 
   /// The check at start waits this long after the first frame.
   final Duration firstCheckDelay;
@@ -139,7 +163,7 @@ class UpdateConfig {
   final Duration releaseListCache;
 
   /// Back in the foreground, check (silently, like the poll) when the last
-  /// check is older than [dueAfter].
+  /// check is older than [resumeCheckAfter].
   final bool checkOnResume;
 
   /// GitHub's rate limit pauses the automatic checks until the reset its

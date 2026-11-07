@@ -1,10 +1,18 @@
 # Voice inbox — speak it, Claude sorts it, you approve it
 
-**Status: proposal, not built.** Agreed with the owner on 2026-10-27 from a
-whiteboard sketch plus several rounds of Q&A. Nothing here exists in the app
-yet; when a phase ships, its as-built description moves into `SPEC.md` Part I
-(which only describes the current app) and this file keeps the design record.
-Items still marked **Open** in §13 need an answer before their phase is built.
+**Status: all five phases built on the app side (0.2.123 sorting, 0.2.124
+Obsidian pages + research rounds)** — as-built in `SPEC.md` §4.2j. What's left
+is outside this repo: the routine, the vault Action step and the app settings,
+all in `voice-inbox-routine.md`. One change from §7/§8 below: the routine
+answers through Todoist comments (`[Questions]`, `[Done] <link>`) as well as
+the `[Obsidian:]` description line, and there is no separate hourly watcher —
+the app checks for replies when the Wishlist/Research page opens. Agreed with the owner on
+2026-10-27 from a whiteboard sketch plus several rounds of Q&A. Deviations
+while building: grocery categories are edited from the Groceries page ("Edit
+categories"), not Settings; the Approval page keeps "By conversation" as a
+second grouping; food entries say `[Suggest: verify]` (or `new`) to get the
+blue dot; markers must be at the top of a description (above the app's
+metadata trailer).
 
 Builds on what already exists — read these first:
 SPEC §4.2e (Waiting for Approval, quick tags, `[Source: …]` marker,

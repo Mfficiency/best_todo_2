@@ -13,12 +13,15 @@ import 'ui/food_diary_page.dart';
 import 'ui/home_scaffold_key.dart';
 import 'ui/home_page.dart';
 import 'ui/settings_page.dart';
+import 'ui/system_bar_safe_area.dart';
 import 'ui/app_logs_page.dart';
 import 'ui/intro_page.dart';
 import 'ui/mode_select_page.dart';
 import 'ui/quick_add_share_page.dart';
 import 'ui/startup_choice_page.dart';
+import 'ui/web_approvals_site.dart';
 import 'ui/web_data_choice_page.dart';
+import 'ui/whats_new_sheet.dart';
 import 'config.dart';
 import 'models/shared_payload.dart';
 import 'services/alarm_ids.dart';
@@ -103,6 +106,24 @@ ThemeData buildMinimalistTheme(Brightness brightness) {
   );
 }
 
+/// Settings → Appearance → Compact mode ([Config.compactMode]): tighter
+/// spacing on every screen through the theme alone (density, list tiles,
+/// app bar, inputs), so no screen needs its own change. Material keeps
+/// tap targets at 48 dp (`materialTapTargetSize` is left padded).
+ThemeData applyCompactMode(ThemeData theme, bool compact) {
+  if (!compact) return theme;
+  return theme.copyWith(
+    visualDensity: VisualDensity.compact,
+    materialTapTargetSize: MaterialTapTargetSize.padded,
+    appBarTheme: theme.appBarTheme.copyWith(toolbarHeight: 52),
+    listTileTheme: theme.listTileTheme.copyWith(
+      visualDensity: VisualDensity.compact,
+      minVerticalPadding: 4,
+    ),
+    inputDecorationTheme: theme.inputDecorationTheme.copyWith(isDense: true),
+  );
+}
+
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Background entry point invoked by a home-screen widget when a toggle is
@@ -158,11 +179,21 @@ Future<void> _initStep(String label, Future<void> Function() step) async {
 Future<void> main() async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
+  // The approvals website (SPEC §4.2k) is its own small app: none of the
+  // phone's startup (backups, alarms, widgets, updates) runs there.
+  if (kIsWeb && Config.webApprovalsSite) {
+    await _initStep('config', Config.load);
+    runApp(const WebApprovalsSiteApp());
+    return;
+  }
   // The full backup (Download/BestToDo/Backups, before every update) first:
   // it tells a new install (nothing in SharedPreferences yet) to offer a
   // restore after the first frame.
   await _initStep('backup', AppUpdates.createBackup);
   await _initStep('config', Config.load);
+  // The folder backup's schedule moves to the full backup's (one automatic
+  // backup on Android, see AppUpdates.adoptFolderBackupSchedule).
+  await _initStep('backup schedule', AppUpdates.adoptFolderBackupSchedule);
   await _initStep('notifications', NotificationService.initialize);
   if (!kIsWeb) {
     await _initStep('sms report scheduler', SmsReportScheduler.applyFromConfig);
@@ -281,12 +312,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (!start && AppUpdates.promptAllowed.value == !busy) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AppUpdates.promptAllowed.value = !busy;
-      if (!start) return;
       final context = appNavigatorKey.currentContext;
+      // What's new after an update (Settings → Releases): worked out right
+      // away, shown once the intro or a first-start picker is closed.
+      if (start) unawaited(WhatsNew.prepare());
+      if (!busy && context != null) unawaited(WhatsNew.show(context));
+      if (!start) return;
       if (context == null) return;
       AppUpdates.start(context);
       // A new install asks once whether to restore a full backup.
       unawaited(AppUpdates.backup?.offerRestore(context));
+      // Settings → Backup & data → Automatic backup (off/daily/weekly):
+      // a due backup now and whenever the app comes back.
+      AppUpdates.backup?.startSchedule();
     });
   }
 
@@ -518,11 +556,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       navigatorKey: appNavigatorKey,
       builder: (context, child) {
         final page = child ?? const SizedBox.shrink();
-        return SafeArea(
-          top: false,
-          left: false,
-          right: false,
-          bottom: true,
+        // Every screen, sheet and dialog stays clear of Android's navigation
+        // bar (bottom, or the side in landscape).
+        return SystemBarSafeArea(
           // The slim update banner ("Update ready · <version>" after
           // Android's confirm was cancelled, or a failed download's Try
           // again) sits below every screen; empty otherwise.
@@ -536,22 +572,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 ),
         );
       },
-      theme: Config.minimalistMode
-          ? buildMinimalistTheme(Brightness.light)
-          : ThemeData(
-              colorScheme: ColorScheme.fromSeed(seedColor: _seedColor)
-                  .copyWith(primary: _seedColor),
-              useMaterial3: true,
-            ),
-      darkTheme: Config.minimalistMode
-          ? buildMinimalistTheme(Brightness.dark)
-          : ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: _seedColor,
-                brightness: Brightness.dark,
-              ).copyWith(primary: _seedColor),
-              useMaterial3: true,
-            ),
+      theme: applyCompactMode(
+        Config.minimalistMode
+            ? buildMinimalistTheme(Brightness.light)
+            : ThemeData(
+                colorScheme: ColorScheme.fromSeed(seedColor: _seedColor)
+                    .copyWith(primary: _seedColor),
+                useMaterial3: true,
+              ),
+        Config.compactMode,
+      ),
+      darkTheme: applyCompactMode(
+        Config.minimalistMode
+            ? buildMinimalistTheme(Brightness.dark)
+            : ThemeData(
+                colorScheme: ColorScheme.fromSeed(
+                  seedColor: _seedColor,
+                  brightness: Brightness.dark,
+                ).copyWith(primary: _seedColor),
+                useMaterial3: true,
+              ),
+        Config.compactMode,
+      ),
       themeMode: Config.darkMode ? ThemeMode.dark : ThemeMode.light,
       home: _showWebDataChoice
           ? WebDataChoicePage(

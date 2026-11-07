@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
-import '../services/storage_service.dart';
 import '../services/todoist_api_client.dart';
 import '../services/todoist_sync_service.dart';
+import '../services/web_approvals/real_data_loader.dart';
 import 'remaining_time_text.dart';
 
 /// Shown first on every `flutter run -d chrome` dev session: pick between
@@ -74,10 +74,13 @@ class _WebDataChoicePageState extends State<WebDataChoicePage> {
     setState(() {
       _busy = true;
       _error = null;
-      _status = 'Connecting to Todoist…';
     });
     try {
-      await TodoistSyncService.instance.testConnection(token);
+      final count = await loadRealTodoistData(token,
+          onStatus: (status) {
+        if (mounted) setState(() => _status = status);
+      });
+      // Remembered only once Todoist accepted it.
       try {
         final prefs = await SharedPreferences.getInstance();
         if (_remember) {
@@ -86,30 +89,12 @@ class _WebDataChoicePageState extends State<WebDataChoicePage> {
           await prefs.remove(WebDataChoicePage.tokenPrefKey);
         }
       } catch (_) {}
-      Config.todoistApiToken = token;
-      Config.todoistSyncEnabled = true;
-      // Before the import: its saves must land in the in-memory store.
-      Config.webRealData = true;
-      if (mounted) setState(() => _status = 'Loading your tasks…');
-      final result = await TodoistSyncService.instance.startFirstLaunchImport();
-      if (result == null) {
-        throw StateError('A Todoist sync is already running — try again');
-      }
-      // Unlike the phone's first-launch import, wait for everything: the
-      // home page reads the list once when it opens.
-      final entry = await result.finishInBackground();
-      if (entry != null && !entry.success) {
-        throw StateError(entry.message);
-      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Loaded ${entry?.itemCount ?? result.todayCount} task(s) from Todoist'),
+        content: Text('Loaded $count task(s) from Todoist'),
       ));
       widget.onFinished();
     } catch (e) {
-      Config.webRealData = false;
-      StorageService.resetWebRealDataForTest();
       if (!mounted) return;
       setState(() {
         _busy = false;

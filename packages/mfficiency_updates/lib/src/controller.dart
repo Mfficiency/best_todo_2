@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'background.dart';
 import 'config.dart';
 import 'downloader.dart';
 import 'http.dart';
@@ -34,9 +35,12 @@ UpdateStrings _english(BuildContext context) => const UpdateStrings();
 /// In-app updates from GitHub Releases (or a JSON manifest), the same in
 /// every app:
 ///
-/// * checks on the first frame when due, every [UpdateConfig.pollInterval]
-///   while in the foreground, when the app comes back to the foreground and
-///   the last check is older than [UpdateConfig.dueAfter], when the "check
+/// * checks every time the app opens (the first frame; [UpdateConfig.checkInterval]
+///   zero), every [UpdateConfig.pollInterval] (5 minutes) while in the
+///   foreground, when the app comes back to the foreground and the last check
+///   is older than [UpdateConfig.resumeCheckAfter] (1 minute), every
+///   [UpdateConfig.backgroundInterval] (1 hour) while the app is closed
+///   ([UpdateConfig.backgroundCheck], [UpdateBackground]), when the "check
 ///   automatically" switch is turned on ([autoCheckChanged]), on pull-down
 ///   in the changelog and from "Check for updates";
 /// * GitHub's rate limit pauses the automatic checks until it resets
@@ -319,13 +323,82 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     }
     _started = true;
     _autoOn = config.autoCheck();
-    if (!_autoOn! || !configured) return;
+    if (!_autoOn! || !configured) {
+      unawaited(_scheduleBackground(on: false));
+      return;
+    }
     if (_isDue(config.checkInterval)) {
       _firstCheck?.cancel();
       _firstCheck = Timer(config.firstCheckDelay, _checkAutomatically);
     }
     _startPolling();
+    unawaited(_scheduleBackground(on: true));
   }
+
+  /// Android runs [UpdateConfig.backgroundCheck] every
+  /// [UpdateConfig.backgroundInterval] while the app is closed, as long as
+  /// "check automatically" is on ([on]); off, the job is cancelled.
+  Future<void> _scheduleBackground({required bool on}) async {
+    final entry = config.backgroundCheck;
+    if (entry == null || !platform.isSupported) return;
+    if (!on) {
+      await platform.cancelBackgroundCheck();
+      return;
+    }
+    final handle = UpdateBackground.handleOf(entry);
+    if (handle == null) {
+      _log(UpdateLogLevel.warning, 'update.background_failed', {
+        'error': 'backgroundCheck is not a top-level function',
+      });
+      return;
+    }
+    final ok = await platform.scheduleBackgroundCheck(
+      handle,
+      config.backgroundInterval,
+      token: _token,
+    );
+    _log(UpdateLogLevel.debug, 'update.background_scheduled', {
+      'ok': ok,
+      'minutes': config.backgroundInterval.inMinutes,
+    });
+  }
+
+  /// Runs in the background engine ([UpdateBackground.run]): checks and,
+  /// when there is a newer build, downloads it silently and waits for the
+  /// download. Never opens Android's installer (the app does that when it
+  /// is opened). Nothing happens with "check automatically" off, without a
+  /// source or while GitHub's rate limit pauses the checks.
+  Future<UpdateResult> checkInBackground() async {
+    _background = true;
+    // The app's own token store may not work without its activity: the
+    // copy handed over when the job was scheduled stands in.
+    if (_token == null) {
+      final t = (await platform.backgroundToken())?.trim();
+      if (t != null && t.isNotEmpty) _token = t;
+    }
+    if (!platform.isSupported ||
+        !config.autoCheck() ||
+        !configured ||
+        rateLimited) {
+      return const UpdateResult(UpdateStatus.upToDate);
+    }
+    final r = await check();
+    await _pendingDownload;
+    return r;
+  }
+
+  /// After [checkInBackground]: a newer build was found but its APK isn't
+  /// complete yet (the background job runs again to continue it).
+  bool get downloadIncomplete =>
+      result.value?.status == UpdateStatus.available &&
+      ready.value != result.value?.key &&
+      isApkUrl(result.value?.url);
+
+  /// Running in the background engine: no installer, no messages.
+  bool _background = false;
+
+  /// The silent download the last [check] started.
+  Future<void>? _pendingDownload;
 
   bool _isDue(Duration interval) {
     final last = lastCheck;
@@ -367,10 +440,12 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     if (!on) {
       _firstCheck?.cancel();
       _stopPolling();
+      unawaited(_scheduleBackground(on: false));
       return;
     }
     if (!configured) return;
     _startPolling();
+    unawaited(_scheduleBackground(on: true));
     if (_isDue(config.dueAfter)) {
       unawaited(_checkAutomatically());
     } else if (result.value case final r?) {
@@ -391,16 +466,86 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) handleResume();
+    if (state == AppLifecycleState.paused) handlePause();
+  }
+
+  /// The app left the screen: a download still running keeps going while
+  /// Android lets the app live, and the background job is asked to continue
+  /// it (from where it stopped) in case Android stops the app.
+  @visibleForTesting
+  void handlePause() {
+    if (_started && (downloading.value || failed.value != null)) {
+      unawaited(_resumeDownloadInBackground());
+    }
+  }
+
+  /// Has Android run the background entry point soon (with a network,
+  /// retried with back-off) to finish an interrupted download. Needs
+  /// [UpdateConfig.backgroundCheck] and "check automatically".
+  Future<void> _resumeDownloadInBackground() async {
+    if (config.backgroundCheck == null ||
+        !platform.isSupported ||
+        !config.autoCheck() ||
+        _background) {
+      return;
+    }
+    await _scheduleBackground(on: true); // the stored entry point and token
+    await platform.scheduleDownloadResume();
+    _log(UpdateLogLevel.debug, 'update.download_handed_over', {});
+  }
+
+  // ── Retries ────────────────────────────────────────────────────────────
+
+  /// Waits between the automatic tries of an interrupted download while
+  /// the app is open; the last one repeats.
+  static const retryDelays = [
+    Duration(seconds: 10),
+    Duration(seconds: 30),
+    Duration(minutes: 1),
+    Duration(minutes: 2),
+    Duration(minutes: 5),
+  ];
+
+  Timer? _retry;
+  int _retries = 0;
+
+  /// A download was cut off (no network, server gone, the app's background
+  /// job holding the file): tried again by itself after [retryDelays] while
+  /// the app is open, and handed to the background job as well.
+  void _scheduleRetry(UpdateResult r) {
+    _retry?.cancel();
+    if (_background || !config.autoCheck()) return;
+    final wait = retryDelays[_retries.clamp(0, retryDelays.length - 1)];
+    _retries++;
+    _log(UpdateLogLevel.debug, 'update.download_retry', {
+      'version': r.key,
+      'inSeconds': wait.inSeconds,
+    });
+    _retry = Timer(wait, () {
+      if (result.value?.key != r.key) return; // a newer one took over
+      if (!_inForeground) return; // the background job continues it
+      unawaited(_downloadInBackground(r, retry: true));
+    });
+    unawaited(_resumeDownloadInBackground());
   }
 
   /// Back in the app: after the "install unknown apps" switch the install
   /// starts; an APK completed while away opens Android's dialog now; a
-  /// check runs when the last one is older than [UpdateConfig.dueAfter]
-  /// ([UpdateConfig.checkOnResume]).
+  /// check runs when the last one is older than
+  /// [UpdateConfig.resumeCheckAfter] ([UpdateConfig.checkOnResume]).
   @visibleForTesting
   void handleResume() {
     _resumed.value++;
-    if (_started && config.checkOnResume && _isDue(config.dueAfter)) {
+    final f = failed.value;
+    if (_started && f != null) {
+      if (result.value?.key == f.key && config.autoCheck()) {
+        _retry?.cancel();
+        unawaited(_downloadInBackground(f, retry: true));
+      }
+    }
+    if (_started &&
+        config.checkOnResume &&
+        _isDue(config.resumeCheckAfter)) {
       unawaited(_checkAutomatically());
     }
     final r = _installOnResume;
@@ -445,6 +590,10 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     _log(UpdateLogLevel.info, 'update.token', {'set': _token != null});
     final r = await check();
     if (_token != null) _startPolling();
+    // The background check reads its own copy of the token.
+    if (_started && config.autoCheck()) {
+      unawaited(_scheduleBackground(on: true));
+    }
     return r;
   }
 
@@ -488,8 +637,10 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
           'ms': sw.elapsedMilliseconds,
         },
       );
-      unawaited(_downloadInBackground(r));
-      return result.value = r;
+      result.value = r;
+      final download = _pendingDownload = _downloadInBackground(r);
+      unawaited(download);
+      return r;
     } catch (e) {
       final status = e is UpdateHttpException ? e.status : null;
       final github = config.provider == UpdateProvider.github;
@@ -702,6 +853,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _downloadInBackground(
     UpdateResult r, {
     bool user = false,
+    bool retry = false,
   }) async {
     if (r.status != UpdateStatus.available ||
         !platform.isSupported ||
@@ -712,9 +864,10 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
       _wantInstall = r.key;
     } else if (!config.autoCheck() ||
         r.key == ready.value ||
-        r.key == failed.value?.key) {
+        (!retry && r.key == failed.value?.key && _retry != null)) {
       return;
     }
+    if (user) _retry?.cancel();
     failed.value = null;
     final path = await _fetchApk(r);
     // A newer build came out meanwhile: its own check downloads that one.
@@ -722,8 +875,13 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
     if (path == null) {
       failed.value = r; // the banner's Try again downloads it again
       if (user) _message((s) => s.installFailed);
+      // Tried again by itself: soon in the app, and by the background job.
+      _scheduleRetry(r);
       return;
     }
+    _retry?.cancel();
+    _retry = null;
+    _retries = 0;
     if (ready.value != r.key) {
       _log(UpdateLogLevel.info, 'update.ready', {'version': r.key});
     }
@@ -740,6 +898,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   /// banner's Install opens it again. A tap on Install ([user], or one
   /// before the download was complete) always opens it.
   Future<void> _offerInstall(UpdateResult r, {bool user = false}) async {
+    if (_background) return; // the app offers it when it is opened
     final path = _readyApk(r);
     if (path == null) return;
     if (!user) {
@@ -902,6 +1061,7 @@ class UpdateController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _stopPolling();
+    _retry?.cancel();
     _firstCheck?.cancel();
     config.autoCheckChanges?.removeListener(autoCheckChanged);
     promptAllowed?.removeListener(_promptAllowedChanged);

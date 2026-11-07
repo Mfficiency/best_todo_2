@@ -152,6 +152,8 @@ void main() {
       'Sync & export',
       'Backup & data',
       'Todoist sync',
+      'Releases',
+      'Debugging',
       'Updates',
       'Filtering rules',
     ];

@@ -105,6 +105,51 @@ class UpdatePlatform {
   /// nothing was picked.
   Future<String?> pickFile() => _call<String>('pickFile');
 
+  /// Another app's installed version, or null when it isn't installed (or
+  /// off Android). Only the packages the plugin's manifest lists.
+  Future<({String version, int build})?> packageInfo(String appId) async {
+    final info = await _call<Map<Object?, Object?>>('packageInfo', {'id': appId});
+    if (info == null) return null;
+    return (
+      version: '${info['versionName'] ?? ''}',
+      build: (info['versionCode'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// Opens another installed app; false when it couldn't.
+  Future<bool> launchApp(String appId) async =>
+      await _call<bool>('launchApp', {'id': appId}) ?? false;
+
   /// Closes the app and starts it again (after a restore).
   Future<void> restartApp() => _call<void>('restartApp');
+
+  /// Has Android run the background entry point [handle]
+  /// ([UpdateBackground]) every [every] while the app is closed, with a
+  /// network, also after a reboot. Scheduling again replaces it. [token]
+  /// (the GitHub token, for a private repo) is kept for that run,
+  /// encrypted with a key in Android's keystore; null removes it.
+  Future<bool> scheduleBackgroundCheck(
+    int handle,
+    Duration every, {
+    String? token,
+  }) async =>
+      await _call<bool>('scheduleBackgroundCheck', {
+        'handle': handle,
+        'minutes': every.inMinutes,
+        'token': token,
+      }) ??
+      false;
+
+  /// Has Android run the background check soon, once a network is there,
+  /// to finish an interrupted download (retried with back-off until it is
+  /// complete). Needs [scheduleBackgroundCheck] first (the entry point).
+  Future<bool> scheduleDownloadResume() async =>
+      await _call<bool>('scheduleDownloadResume') ?? false;
+
+  /// The token handed to [scheduleBackgroundCheck], for the background run.
+  Future<String?> backgroundToken() => _call<String>('backgroundToken');
+
+  /// Stops the background check ("check automatically" turned off).
+  Future<void> cancelBackgroundCheck() =>
+      _call<void>('cancelBackgroundCheck');
 }

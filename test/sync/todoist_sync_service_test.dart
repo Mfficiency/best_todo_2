@@ -9,8 +9,10 @@ import 'package:besttodo/services/item_views.dart';
 import 'package:besttodo/services/project_service.dart';
 import 'package:besttodo/services/storage_service.dart';
 import 'package:besttodo/services/todoist_api_client.dart';
+import 'package:besttodo/services/todoist_metadata_codec.dart';
 import 'package:besttodo/services/todoist_sync_service.dart';
 import 'package:besttodo/utils/label_utils.dart';
+import 'package:besttodo/utils/voice_inbox.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -438,6 +440,231 @@ void main() {
     final tasks = await ItemRepository.instance.loadItems();
     expect(tasks.single.description, 'entered on the go');
     expect(tasks.single.pendingSourceTitle, isNull);
+  });
+
+  group('approved or denied on another device (approvals website)', () {
+    test('a pending item approved elsewhere loses the gate and takes the '
+        'approval', () async {
+      final id = fake.seedTask(
+        content: 'Buy milk',
+        description: '[Group: todo]',
+        labels: [waitingApprovalToken],
+      );
+      await TodoistSyncService.instance.syncNow();
+      final pulled = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(pulled.label), isTrue);
+
+      // What the website pushes when it approves: no gate label, a date and
+      // approvedAt in the trailer.
+      fake.tasks[id]!
+        ..['labels'] = ['mlr']
+        ..['due'] = {'date': '2026-11-02', 'string': ''}
+        ..['description'] = TodoistMetadataCodec.build(visible: '', meta: {
+          'uid': pulled.uid,
+          'approvedAt': '2026-10-28T10:00:00.000Z',
+        });
+      await TodoistSyncService.instance.syncNow();
+
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(task.label), isFalse);
+      expect(splitLabelTokens(task.label), ['mlr']);
+      expect(task.approvedAt!.toUtc(), DateTime.parse('2026-10-28T10:00:00.000Z'));
+      expect(task.dueDate, DateTime(2026, 11, 2, 18)); // date-only = 18:00
+      expect(ItemViews.waitingApproval([task]), isEmpty);
+    });
+
+    test('a gate label removed by hand in Todoist (no approvedAt) keeps the '
+        'item pending', () async {
+      final id = fake.seedTask(
+          content: 'Buy milk', labels: [waitingApprovalToken]);
+      await TodoistSyncService.instance.syncNow();
+      fake.tasks[id]!['labels'] = <String>[];
+      await TodoistSyncService.instance.syncNow();
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(task.label), isTrue);
+    });
+
+    test('a task approved elsewhere before this device saw it arrives '
+        'approved', () async {
+      fake.seedTask(
+        content: 'Call bank',
+        description: TodoistMetadataCodec.build(visible: '', meta: {
+          'uid': 'from-the-website',
+          'approvedAt': '2026-10-28T10:00:00.000Z',
+        }),
+      );
+      await TodoistSyncService.instance.syncNow();
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(task.label), isFalse);
+      expect(task.approvedAt, isNotNull);
+    });
+
+    test('a pending item that vanished from Todoist was denied: it goes to '
+        'the Deleted bin, not to done', () async {
+      final id = fake.seedTask(
+          content: 'Spam idea', labels: [waitingApprovalToken]);
+      fake.seedTask(content: 'Keep me');
+      await TodoistSyncService.instance.syncNow();
+      fake.tasks.remove(id);
+      await TodoistSyncService.instance.syncNow();
+
+      final tasks = await ItemRepository.instance.loadItems();
+      expect(tasks.map((t) => t.title), ['Keep me']);
+      final bin = await ItemRepository.instance.loadBinItems();
+      expect(bin.single.title, 'Spam idea');
+      expect(bin.single.deletedAt, isNotNull);
+      expect(bin.single.isDone, isFalse);
+    });
+
+    test('an approval whose edit was already pulled (by an older build that '
+        'kept the item pending) is still taken', () async {
+      final id = fake.seedTask(
+          content: 'Buy milk', labels: [waitingApprovalToken]);
+      await TodoistSyncService.instance.syncNow();
+      final uid = (await ItemRepository.instance.loadItems()).single.uid;
+      // The label went first: pulled, item kept pending (fingerprints now
+      // match the remote) — what a pre-0.2.126 build did with the approval.
+      fake.tasks[id]!['labels'] = <String>[];
+      await TodoistSyncService.instance.syncNow();
+      expect(hasWaitingApprovalToken(
+              (await ItemRepository.instance.loadItems()).single.label),
+          isTrue);
+      // Only the trailer says approvedAt — no fingerprint change.
+      fake.tasks[id]!['description'] = TodoistMetadataCodec.build(
+          visible: '',
+          meta: {'uid': uid, 'approvedAt': '2026-10-28T10:00:00.000Z'});
+      await TodoistSyncService.instance.syncNow();
+
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(task.label), isFalse);
+      // And nothing pushes the gate back afterwards.
+      await TodoistSyncService.instance.syncNow();
+      expect(fake.tasks[id]!['labels'], isEmpty);
+    });
+
+    test('a pending item an older build marked done when it vanished goes to '
+        'the bin', () async {
+      await StorageService().saveTaskList([
+        Task(title: 'Denied on the website', label: waitingApprovalToken)
+          ..isDone = true,
+        Task(title: 'Normal done task')..isDone = true,
+      ]);
+      await TodoistSyncService.instance.syncNow();
+
+      final tasks = await ItemRepository.instance.loadItems();
+      expect(tasks.map((t) => t.title), isNot(contains('Denied on the website')));
+      final bin = await ItemRepository.instance.loadBinItems();
+      expect(bin.single.title, 'Denied on the website');
+      expect(bin.single.isDone, isFalse);
+    });
+
+    test('approving here writes approvedAt into the trailer', () async {
+      final id = fake.seedTask(
+          content: 'Buy milk', labels: [waitingApprovalToken]);
+      await TodoistSyncService.instance.syncNow();
+      expect(fake.tasks[id]!['description'], isNot(contains('approvedAt')));
+
+      final tasks = await ItemRepository.instance.loadItems();
+      tasks.single
+        ..label = removeWaitingApprovalToken(tasks.single.label)
+        ..approvedAt = DateTime.utc(2026, 10, 28, 9);
+      await ItemRepository.instance.saveItems(tasks);
+      await TodoistSyncService.instance.syncNow();
+
+      expect(fake.tasks[id]!['labels'], isEmpty);
+      final meta =
+          TodoistMetadataCodec.parse(fake.tasks[id]!['description']).meta!;
+      expect(meta['approvedAt'], '2026-10-28T09:00:00.000Z');
+    });
+  });
+
+  group('voice inbox markers', () {
+    test('group, suggestion, project and transcript markers are stored on the '
+        'pending task and stripped from its description', () async {
+      fake.seedTask(
+        content: 'Widget dark mode',
+        description: '[Source: Walk 21 Oct]\n[Group: backlog]\n'
+            '[Suggest: next]\n[Project: Projects/Apps/BestToDo.md]\n'
+            '[Transcript: Pocket/x/y - t.md]\nOnly at night',
+      );
+
+      await TodoistSyncService.instance.syncNow();
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(task.pendingSourceTitle, 'Walk 21 Oct');
+      expect(task.approvalGroup, ApprovalGroups.backlog);
+      expect(task.approvalSuggestion, 'next');
+      expect(task.obsidianProject, 'Projects/Apps/BestToDo.md');
+      expect(task.transcriptPath, 'Pocket/x/y - t.md');
+      expect(task.description, 'Only at night');
+      expect(hasWaitingApprovalToken(task.label), isTrue);
+
+      // Nothing is pushed back just because the markers were stripped.
+      final second = await TodoistSyncService.instance.syncNow();
+      expect(second!.itemCount, 0);
+    });
+
+    test('a food item skips approval and becomes a Food Diary entry, deleted '
+        'on the Todoist side by the next run', () async {
+      final id = fake.seedTask(
+        content: 'Pasta pesto',
+        description: '[Group: food]\n[Suggest: verify]',
+        due: {'date': '2026-10-20T12:30:00Z', 'string': ''},
+      );
+
+      await TodoistSyncService.instance.syncNow();
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(task.isEatingHabit, isTrue);
+      expect(hasWaitingApprovalToken(task.label), isFalse);
+      expect(task.needsVerification, isTrue);
+      expect(task.hasExplicitTime, isTrue);
+      expect(task.dueDate, DateTime.parse('2026-10-20T12:30:00Z').toLocal());
+      expect(ItemViews.foodDiary([task]).single.title, 'Pasta pesto');
+      expect(fake.tasks.containsKey(id), isTrue);
+
+      await TodoistSyncService.instance.syncNow();
+      expect(fake.tasks.containsKey(id), isFalse);
+      final after = (await ItemRepository.instance.loadItems()).single;
+      expect(after.isEatingHabit, isTrue);
+    });
+
+    test('a pending task the routine sorts later moves out of Other and stays '
+        'pending', () async {
+      final id = fake.seedTask(content: 'Typed in Todoist');
+      await TodoistSyncService.instance.syncNow();
+      expect((await ItemRepository.instance.loadItems()).single.approvalGroup,
+          isNull);
+
+      fake.tasks[id]!['description'] = '[Group: todo]\n[Suggest: tomorrow]';
+      await TodoistSyncService.instance.syncNow();
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(task.approvalGroup, ApprovalGroups.todo);
+      expect(task.approvalSuggestion, 'tomorrow');
+      expect(task.description, isEmpty);
+      expect(hasWaitingApprovalToken(task.label), isTrue);
+    });
+
+    test('an [Obsidian: ...] link added after approval is picked up',
+        () async {
+      final id = fake.seedTask(
+          content: 'Big idea', description: '[Group: backlog]');
+      await TodoistSyncService.instance.syncNow();
+      final tasks = await ItemRepository.instance.loadItems();
+      tasks.single.label = removeWaitingApprovalToken(tasks.single.label);
+      tasks.single.isWish = true;
+      await ItemRepository.instance.saveItems(tasks);
+      await TodoistSyncService.instance.syncNow();
+
+      // The routine puts the link on the description's first line — above
+      // the app's metadata trailer, which is never read for markers.
+      fake.tasks[id]!['description'] =
+          '[Obsidian: obsidian://open?file=x]\n${fake.tasks[id]!['description']}';
+      await TodoistSyncService.instance.syncNow();
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(task.obsidianLink, 'obsidian://open?file=x');
+      expect(task.description, isNot(contains('[Obsidian')));
+      // Approved stays approved — sorting markers aren't re-read.
+      expect(hasWaitingApprovalToken(task.label), isFalse);
+    });
   });
 
   test('a pulled task adopts its Todoist-side creation time when the API '

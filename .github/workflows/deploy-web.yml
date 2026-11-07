@@ -1,0 +1,70 @@
+name: Deploy approvals website
+
+# Builds the password-locked Waiting for Approval website (SPEC §4.2k) and
+# publishes it to the `gh-pages` branch, which GitHub Pages serves at
+# https://<owner>.github.io/<repo>/. A branch rather than the Actions Pages
+# deploy because that one's `github-pages` environment only accepts the
+# default branch (main), and the site should follow dev. `gh-pages` is on
+# prune_old_branches.mjs's keep list.
+#
+# The site holds no data and no secret: the Todoist token is typed into the
+# browser once and stored there encrypted with the person's password.
+
+on:
+  push:
+    branches: [dev]
+    paths-ignore:
+      - 'assets/test_report.json'
+      - 'docs/**'
+      - 'github_releases/**'
+      - 'build_history.json'
+      - 'SCREENSHOT_CHANGELOG.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.2'
+          channel: 'stable'
+          cache: true
+
+      - name: Build the website
+        run: |
+          flutter pub get
+          flutter build web --release \
+            --no-web-resources-cdn \
+            --pwa-strategy=none \
+            --base-href "/${{ github.event.repository.name }}/" \
+            --dart-define=WEB_APPROVALS_SITE=true
+          dart run tool/harden_approvals_site.dart build/web
+          # Serve the files as they are (no Jekyll processing).
+          touch build/web/.nojekyll
+
+      - name: Publish to gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd build/web
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Approvals website from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" gh-pages
+          echo "Published https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${{ github.event.repository.name }}/" >> "$GITHUB_STEP_SUMMARY"

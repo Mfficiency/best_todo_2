@@ -35,6 +35,9 @@ const PROTECTED = new Set([
   // so it goes stale quickly and would otherwise be a prime deletion target —
   // losing it breaks Tools -> Test Results. See tool/ci/publish_test_report.sh.
   'ci-reports',
+  // The published approvals website (deploy-web.yml, SPEC §4.2k) — deleting
+  // it takes the site offline.
+  'gh-pages',
 ]);
 
 const args = process.argv.slice(2);

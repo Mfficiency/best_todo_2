@@ -85,8 +85,8 @@ void main() {
   });
 
   testWidgets(
-      'sections run Appearance first, Updates second to last, '
-      'Backup & data last', (tester) async {
+      'sections run Appearance first; Debugging, Updates and Backup & data '
+      'last', (tester) async {
     await pumpSettings(tester);
 
     // The chip row lists the sections in page order.
@@ -95,6 +95,7 @@ void main() {
         .map((c) => (c.label as Text).data)
         .toList();
     expect(chips.first, 'Appearance');
+    expect(chips[chips.length - 3], 'Debugging');
     expect(chips[chips.length - 2], 'Updates');
     expect(chips.last, 'Backup & data');
     expect(chips, isNot(contains('Backup')));
@@ -111,7 +112,8 @@ void main() {
     await tester.pumpAndSettle();
     double top(String title) =>
         tester.getTopLeft(find.byTooltip('Expand $title')).dy;
-    expect(top('Claude Routine'), lessThan(top('Updates')));
+    expect(top('Claude Routine'), lessThan(top('Debugging')));
+    expect(top('Debugging'), lessThan(top('Updates')));
     expect(top('Updates'), lessThan(top('Backup & data')));
 
     // The jump from the chip lands on the renamed section and opens it.

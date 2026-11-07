@@ -275,7 +275,7 @@ void main() {
       ],
       marker: 'Buy a telescope',
     );
-    expect(find.text('Next release (1)'), findsOneWidget);
+    expect(find.text('Active (1)'), findsOneWidget);
 
     await tester.drag(find.text('Buy a telescope'), const Offset(300, 0));
     await tester.pump();
@@ -283,7 +283,7 @@ void main() {
     await tester.pump(wishlistSweepDelay + const Duration(milliseconds: 50));
     await settleWrites(tester);
 
-    expect(find.text('Soon (1)'), findsOneWidget);
+    expect(find.text('Next (1)'), findsOneWidget);
     final saved = await readJsonList(tester, 'tasks.json');
     expect(saved.single['label'], 'release-soon');
   });
@@ -586,13 +586,13 @@ void main() {
       marker: 'Backlog item',
     );
 
-    expect(find.text('Next release (1)'), findsOneWidget);
-    expect(find.text('Soon (1)'), findsOneWidget);
-    expect(find.text('Backlog (1)'), findsOneWidget);
+    expect(find.text('Active (1)'), findsOneWidget);
+    expect(find.text('Next (1)'), findsOneWidget);
+    expect(find.text('Someday (1)'), findsOneWidget);
     // The section order puts Next release above Soon above Backlog.
-    final nextY = tester.getTopLeft(find.text('Next release (1)')).dy;
-    final soonY = tester.getTopLeft(find.text('Soon (1)')).dy;
-    final backlogY = tester.getTopLeft(find.text('Backlog (1)')).dy;
+    final nextY = tester.getTopLeft(find.text('Active (1)')).dy;
+    final soonY = tester.getTopLeft(find.text('Next (1)')).dy;
+    final backlogY = tester.getTopLeft(find.text('Someday (1)')).dy;
     expect(nextY, lessThan(soonY));
     expect(soonY, lessThan(backlogY));
     // Only the Next release section carries the propose button.
@@ -607,17 +607,17 @@ void main() {
       marker: 'Buy a telescope',
     );
 
-    expect(find.text('Backlog (1)'), findsOneWidget);
-    expect(find.text('Next release (1)'), findsNothing);
+    expect(find.text('Someday (1)'), findsOneWidget);
+    expect(find.text('Active (1)'), findsNothing);
 
     await tester.tap(find.byTooltip('Move to release group'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Next release'));
+    await tester.tap(find.text('Active'));
     await tester.pumpAndSettle();
     await settleWrites(tester);
 
-    expect(find.text('Next release (1)'), findsOneWidget);
-    expect(find.text('Backlog (1)'), findsNothing);
+    expect(find.text('Active (1)'), findsOneWidget);
+    expect(find.text('Someday (1)'), findsNothing);
     final saved = await readJsonList(tester, 'tasks.json');
     expect(saved.single['label'], 'release-next');
   });
