@@ -172,6 +172,7 @@ class Config {
     'pc_watcher',
     'lemmon',
     'groceries',
+    'agent_desk',
   ];
 
   /// Human-readable labels for [startToolOptions], index-aligned.
@@ -195,6 +196,7 @@ class Config {
     'PC Watcher',
     'Lemmon',
     'Groceries',
+    'Agent Desk',
   ];
 
   /// Which page opens when the app starts: 'tasks' (the regular task list,
@@ -251,6 +253,7 @@ class Config {
     'pc_watcher',
     'lemmon',
     'groceries',
+    'agent_desk',
   ];
 
   /// Human-readable labels for [featureKeys], index-aligned.
@@ -282,6 +285,7 @@ class Config {
     'PC Watcher',
     'Lemmon',
     'Groceries',
+    'Agent Desk',
   ];
 
   /// One-line explanations for [featureKeys], index-aligned.
@@ -313,6 +317,7 @@ class Config {
     'What the build PC built: log, failures, build times, APK sizes, pending',
     'The home screen, showing only tasks tagged "lemmon"',
     'Reusable grocery checklist, grouped by category',
+    'The decisions background agents need from you, and their projects',
   ];
 
   /// Per-feature switches used in full mode. Missing keys count as enabled.

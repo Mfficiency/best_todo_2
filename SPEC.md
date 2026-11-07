@@ -3610,6 +3610,44 @@ Tools → **PC Watcher** (feature/start-tool key `pc_watcher`, `Icons.computer`;
   re-downloads; the key action edits/removes the token (`_TokenDialog` owns its controller).
 - Tests: `test/tools/pc_watcher_page_test.dart` (MockClient + mocked SharedPreferences).
 
+### 10.6s Agent Desk (0.4.2)
+Tools → **Agent Desk** (feature/start-tool key `agent_desk`, `Icons.smart_toy_outlined`;
+`lib/ui/agent_desk_page.dart`, `lib/services/agent_desk_service.dart`,
+`lib/models/agent_desk.dart`): the screen for steering background agents (Claude Code on
+the Beast and in cloud sessions) from the PCs. Meant as the start page on the Beast and the
+laptop (Settings → Default start page → Agent Desk). The plan behind it is
+laptop-builder's `beast/agent-desk/README.md`.
+- **Data: a folder of plain files, one writer per file.** Default `D:\AgentDesk` on Windows
+  with a D: drive, else `<documents>/AgentDesk`; changed with the app-bar folder button
+  (SharedPreferences `agent_desk_folder`, empty = default). Each subfolder (not starting with
+  `.` or `_`) is a project: `brief.md` (`# Name`, the first paragraph = the goal; written by
+  you), `status.json` `{state working|waiting|idle|error, summary, where beast|cloud|both,
+  updatedAt, name?}`, `questions.jsonl` `{id, at, topic, text, options[], priority
+  blocking|normal|later, deadline}` and `log.md` (written by the agent), and
+  `decisions-<device>.jsonl` `{id, at, questionId?, topic, text, via option|text, device}`,
+  appended only by the BestToDo install on that device (`device` = the hostname, lowercased,
+  non `[a-z0-9_-]` → `-`). Two PCs syncing the folder through git therefore never edit the
+  same file. A question is answered once any device's decision names its id. Bad lines or
+  files are skipped. The page re-reads the folder every 15 s.
+- **Ranking** (`AgentDeskRanking`): blocking, then with a deadline (soonest), then oldest,
+  `later` last. **Decide now** = the first three that aren't `later`, side by side at ≥ 900 px
+  (equal height, answer boxes lined up), stacked below that; "+N more waiting" / "N for later".
+- **Answering** (`DeskQuestionCard`, owns its controller): a tonal button per suggested
+  answer, or type/speak (`SpeechInputButton`) and Send/Enter. Sent → SnackBar "Sent to
+  <project>", the card locks, the reload drops it and the next question moves up.
+- **Projects**: a card per project (state dot blue/orange/red/grey, cloud/PC icon for `where`,
+  summary or goal, age, "N open", "N later"), two columns when wide. Tapping opens
+  `AgentDeskProjectPage` (max 960 px wide): status and goal, **Tell the agent what to do next**
+  (a decision without `questionId`, with an optional topic from the project's questions),
+  open questions, **Later** (parked ones), your last 10 decisions, the last 40 lines of
+  `log.md`.
+- **No folder**: a card offers **Set up the desk** (`seed()`: README.md plus five starter
+  projects — 3D builder, Photos and videos, Network and devices, Sensitive documents, Deals —
+  with their briefs and the questions already known, the parked ones as `later`; never
+  overwrites an existing file) or **Choose folder**.
+- Tests: `test/desk/` (service on a temp dir; page on an in-memory fake, no file I/O inside
+  `testWidgets`).
+
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).
 **Startup Times**: summary card (typical/last/fastest/slowest, hero median), fl_chart line

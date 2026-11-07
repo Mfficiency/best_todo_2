@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.2] - 2026-11-07
+- New tool: Agent Desk (Tools → Agent Desk), the screen for steering the agents that work in the background. On top, the three decisions they need from you; below, every project with what its agent is doing. Answer with a tap on a suggested answer, by typing or by speaking. Open a project to tell its agent what to do next, see the questions parked for later, your earlier answers and the agent's log. It reads a shared folder (D:\AgentDesk on the PCs) and can set that up with the first five projects: 3D builder, photos, network, sensitive documents and deals. Make it the start page in Settings → Default start page
+
 ## [0.4.1] - 2026-11-05
 - Security check of every library the app uses: none is compromised or has a known vulnerability. Changelog and What's new now use flutter_markdown_plus, the maintained successor of flutter_markdown. Obsidian plugin: its build and test tools updated past known security problems (esbuild, handlebars, brace-expansion, js-yaml, moment)
 

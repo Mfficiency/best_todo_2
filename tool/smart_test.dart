@@ -151,6 +151,7 @@ final List<SuiteRule> suiteRules = [
   SuiteRule(['lib/utils/linkified_text.dart', 'lib/ui/task_detail_page.dart', 'lib/ui/task_info_dialog.dart'], {'home', 'tools'}),
   SuiteRule(['AlarmsWidgetProvider.kt'], {'alarms', 'home'}),
   SuiteRule(['SimpleWidgetProvider.kt'], {'home'}),
+  SuiteRule(['lib/models/agent_desk.dart', 'lib/services/agent_desk_service.dart', 'lib/ui/agent_desk_page.dart'], {'desk'}),
 ];
 
 /// Maps a `test/<area>/...` path straight to that area's own suite.
