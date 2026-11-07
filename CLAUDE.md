@@ -169,6 +169,10 @@ file is the short operational guide.
   Code: `lib/ui/web_approvals_site.dart`, `lib/services/web_approvals/`. Never put a
   secret in the build. Keep `ApprovalsSyncCoordinator` between the page and the sync,
   or a stale save makes the next sync delete tasks on Todoist.
+- Agent Desk on the PCs (SPEC §10.6s): Todoist tasks labelled `agentdesk`, read by
+  `AgentDeskService` directly, separate from the full sync, which only mirrors them read-only.
+  `powershell -File tool\publish_windows.ps1` publishes a `windows-v…` build;
+  `tool\install_agent_desk.ps1` installs it with a `--desk` logon shortcut.
 - Obsidian plugin (`obsidian-plugin/`, own npm package — not part of the Flutter
   build): `npm ci && npm test && npm run build` there; CI job `obsidian_plugin.yml`
 

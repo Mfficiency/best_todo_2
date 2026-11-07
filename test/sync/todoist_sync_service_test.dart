@@ -205,6 +205,74 @@ void main() {
     TodoistSyncService.resetForTest();
   });
 
+  group('Agent Desk tasks (a read-only mirror)', () {
+    test('skip the approval gate and stay out of every list', () async {
+      fake.seedTask(content: 'A question?', labels: [agentDeskToken]);
+
+      await TodoistSyncService.instance.syncNow();
+
+      final task = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(task.label), isFalse);
+      expect(ItemViews.waitingApproval([task]), isEmpty);
+      expect(ItemViews.homeBucket([task], 0, DateTime.now()), isEmpty);
+      expect(ItemViews.isVisibleInMainViews(task), isFalse);
+    });
+
+    test('are never pushed back, moved or given a trailer', () async {
+      final inbox = fake.seedInboxProject();
+      final id = fake.seedTask(
+        content: 'A question?',
+        description: 'A big description',
+        projectId: 'agents',
+        labels: [agentDeskToken],
+      );
+      await TodoistSyncService.instance.syncNow();
+
+      // Any local edit, the kind that would normally win and be pushed.
+      final tasks = await ItemRepository.instance.loadItems();
+      tasks.single.description = 'stale local copy';
+      await StorageService().saveTaskList(tasks);
+      await TodoistSyncService.instance.syncNow();
+
+      final remote = fake.tasks[id]!;
+      expect(remote['description'], 'A big description');
+      expect(remote['project_id'], 'agents');
+      expect(remote['project_id'], isNot(inbox));
+      // The local copy follows Todoist again.
+      final after = await ItemRepository.instance.loadItems();
+      expect(after.single.description, 'A big description');
+    });
+
+    test('an answered label set on Todoist arrives, a closed task is done',
+        () async {
+      final id = fake.seedTask(content: 'Q?', labels: [agentDeskToken]);
+      await TodoistSyncService.instance.syncNow();
+
+      fake.tasks[id]!['labels'] = [agentDeskToken, agentDeskAnsweredToken];
+      await TodoistSyncService.instance.syncNow();
+      var task = (await ItemRepository.instance.loadItems()).single;
+      expect(labelHasToken(task.label, agentDeskAnsweredToken), isTrue);
+
+      fake.tasks.remove(id);
+      await TodoistSyncService.instance.syncNow();
+      task = (await ItemRepository.instance.loadItems()).single;
+      expect(task.isDone, isTrue);
+    });
+
+    test('a task waiting for approval leaves the gate once labelled', () async {
+      final id = fake.seedTask(content: 'Q?');
+      await TodoistSyncService.instance.syncNow();
+      var task = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(task.label), isTrue);
+
+      fake.tasks[id]!['labels'] = [agentDeskToken];
+      await TodoistSyncService.instance.syncNow();
+      task = (await ItemRepository.instance.loadItems()).single;
+      expect(hasWaitingApprovalToken(task.label), isFalse);
+      expect(hasAgentDeskToken(task.label), isTrue);
+    });
+  });
+
   test('syncNow is a no-op when disabled or without a token', () async {
     Config.todoistSyncEnabled = false;
     expect(await TodoistSyncService.instance.syncNow(), isNull);

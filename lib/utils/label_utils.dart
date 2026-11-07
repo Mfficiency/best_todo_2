@@ -153,6 +153,22 @@ const String lemmonToken = 'lemmon';
 /// Whether [label] carries the Lemmon gate.
 bool hasLemmonToken(String label) => labelHasToken(label, lemmonToken);
 
+/// Label on every Agent Desk task (SPEC §10.6s). Gated like [worklistToken]:
+/// these tasks only ever appear on the desk, on no toggle.
+const String agentDeskToken = 'agentdesk';
+
+/// A desk project's status item.
+const String agentDeskStatusToken = 'agentdesk_status';
+
+/// A desk question you answered, waiting for its agent.
+const String agentDeskAnsweredToken = 'agentdesk_answered';
+
+/// An instruction you gave a desk project's agent.
+const String agentDeskInstructionToken = 'agentdesk_instruction';
+
+/// Whether [label] carries the Agent Desk gate.
+bool hasAgentDeskToken(String label) => labelHasToken(label, agentDeskToken);
+
 /// The wishlist priority tokens, lowest first (mirrors `wishPriorityLabels`).
 const List<String> priorityTokens = <String>[
   'priority-low',

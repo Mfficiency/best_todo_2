@@ -1149,6 +1149,8 @@ class _HomePageState extends State<HomePage>
     // them — a tag-filtered instance like Worklist would otherwise steal them
     // away from the real home page while it's open.
     if (widget.tagFilter == null) {
+      // The very first frame already shows the desk on a `--desk` launch.
+      _deskMode = _deskOpened = Config.launchOnDesk;
       ShareIntentService.instance.registerConsumer(_addSharedTask);
       // Lets the app shell reopen a live dice timer after its full-screen
       // alarm is stopped (see main.dart), with the task's actions ready.
@@ -1255,6 +1257,12 @@ class _HomePageState extends State<HomePage>
   /// Pushes the given tool's page. Used by the Tools drawer section and by
   /// the "Default start page" setting on launch.
   void _openTool(String tool) {
+    // On the real home page the desk sits next to the task list (same menu,
+    // one toggle), it isn't a page on top. A Worklist instance still pushes it.
+    if (tool == 'agent_desk' && _deskAvailable) {
+      _setDeskMode(true);
+      return;
+    }
     final page = _buildToolPage(tool);
     if (page == null) return;
     Navigator.of(context)
@@ -1297,6 +1305,62 @@ class _HomePageState extends State<HomePage>
     // approval denied, a wishlist edit), and none of those went through
     // _saveTasks here — so push the fresh payload.
     _updateHomeWidget();
+  }
+
+  /// Whether this page shows the Agent Desk rather than the task list.
+  bool _deskMode = false;
+
+  /// Built on first use, then kept alive so the toggle is instant.
+  bool _deskOpened = false;
+  final GlobalKey<AgentDeskPageState> _deskKey = GlobalKey();
+
+  bool get _deskAvailable =>
+      widget.tagFilter == null &&
+      (Config.launchOnDesk || Config.isFeatureEnabled('agent_desk'));
+
+  void _setDeskMode(bool on) {
+    if (!mounted || on == _deskMode) return;
+    setState(() {
+      _deskMode = on;
+      _deskOpened = _deskOpened || on;
+    });
+    _homeKeyboardFocusNode.requestFocus();
+  }
+
+  /// Agent Desk / Home: the big toggle on a PC, one icon on a phone (shown only
+  /// on the desk, where it's the way back).
+  Widget? _buildDeskToggle(BuildContext context) {
+    if (!_deskAvailable) return null;
+    if (_isDesktopShortcutsEnabled(context)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: SegmentedButton<bool>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(
+              value: true,
+              icon: Icon(Icons.smart_toy_outlined, size: 18),
+              label: Text('Agent Desk'),
+              tooltip: 'Agent Desk (Ctrl+D)',
+            ),
+            ButtonSegment(
+              value: false,
+              icon: Icon(Icons.checklist, size: 18),
+              label: Text('Home'),
+              tooltip: 'Home (Ctrl+D)',
+            ),
+          ],
+          selected: {_deskMode},
+          onSelectionChanged: (s) => _setDeskMode(s.first),
+        ),
+      );
+    }
+    if (!_deskMode) return null;
+    return IconButton(
+      icon: const Icon(Icons.checklist),
+      tooltip: 'Home',
+      onPressed: () => _setDeskMode(false),
+    );
   }
 
   /// Pull-to-refresh on the task list: runs a two-way Todoist sync (a no-op
@@ -1916,6 +1980,25 @@ class _HomePageState extends State<HomePage>
       _openSettingsPage();
       return KeyEventResult.handled;
     }
+    if (ctrlPressed && key == LogicalKeyboardKey.keyD && _deskAvailable) {
+      _setDeskMode(!_deskMode);
+      return KeyEventResult.handled;
+    }
+    // The task list's keys don't reach a list that's hidden behind the desk.
+    if (_deskMode) {
+      if (_primaryFocusIsTextInput) return KeyEventResult.ignored;
+      if (key == LogicalKeyboardKey.arrowDown ||
+          key == LogicalKeyboardKey.keyJ) {
+        _deskKey.currentState?.moveSelection(1);
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowUp ||
+          key == LogicalKeyboardKey.keyK) {
+        _deskKey.currentState?.moveSelection(-1);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
     if (ctrlPressed && key == LogicalKeyboardKey.keyF) {
       _focusSearch();
       return KeyEventResult.handled;
@@ -2507,6 +2590,7 @@ class _HomePageState extends State<HomePage>
   void _goHome() {
     Navigator.of(context).popUntil((route) => route.isFirst);
     setState(() {
+      _deskMode = false;
       if (_searchQuery.isNotEmpty) {
         _searchController.clear();
         _searchQuery = '';
@@ -2527,6 +2611,7 @@ class _HomePageState extends State<HomePage>
       // active would leave the home page in a state with no way back, so both
       // are reset here.
       if (!Config.isFeatureEnabled('schedule_view')) _scheduleView = false;
+      if (!_deskAvailable) _deskMode = false;
       if (!Config.isFeatureEnabled('search') && _searchQuery.isNotEmpty) {
         _searchController.clear();
         _searchQuery = '';
@@ -3344,6 +3429,31 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  Widget _buildMenuButton() => Builder(
+        builder: (context) => IconButton(
+          tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
+          icon: Config.showFailureDotOnMenu &&
+                  TestReportService.instance.hasUnseenFailures
+              ? _iconWithFailureDot(Icons.menu)
+              : const Icon(Icons.menu),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
+      );
+
+  /// The app bar over the desk: the same menu, the same toggle, no task tabs.
+  AppBar _buildDeskAppBar(BuildContext context) => AppBar(
+        leading: _buildMenuButton(),
+        title: const Text('Agent Desk'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: () => _deskKey.currentState?.refresh(),
+          ),
+          if (_buildDeskToggle(context) case final toggle?) toggle,
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     // Keeps configured flame goals (see StreakGoal) able to tell a deleted
@@ -3584,17 +3694,8 @@ class _HomePageState extends State<HomePage>
           ],
         ),
       ),
-      appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
-            icon: Config.showFailureDotOnMenu &&
-                    TestReportService.instance.hasUnseenFailures
-                ? _iconWithFailureDot(Icons.menu)
-                : const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
+      appBar: _deskMode ? _buildDeskAppBar(context) : AppBar(
+        leading: _buildMenuButton(),
         title: Config.isFeatureEnabled('search')
             ? TextField(
                 controller: _searchController,
@@ -3619,6 +3720,7 @@ class _HomePageState extends State<HomePage>
               )
             : Text(widget.toolTitle ?? 'BestToDo'),
         actions: [
+          if (_buildDeskToggle(context) case final toggle?) toggle,
           ValueListenableBuilder<int>(
             valueListenable: TaskMutationService.instance.revision,
             builder: (context, _, __) {
@@ -3756,7 +3858,13 @@ class _HomePageState extends State<HomePage>
           ),
         ),
       ),
-      body: Column(
+      // Both stay alive behind the toggle: switching is instant and neither
+      // loses its place.
+      body: IndexedStack(
+        index: _deskMode ? 1 : 0,
+        sizing: StackFit.expand,
+        children: [
+          Column(
         children: [
           // Shown only while the first-launch Todoist import is still
           // pulling in everything past today (see IntroPage's import
@@ -3829,12 +3937,25 @@ class _HomePageState extends State<HomePage>
           ),
         ],
       ),
+          if (_deskOpened)
+            AgentDeskPage(key: _deskKey, embedded: true, active: _deskMode)
+          else
+            const SizedBox.shrink(),
+        ],
+      ),
     );
-    final content = Focus(
-      focusNode: _homeKeyboardFocusNode,
-      autofocus: true,
-      onKeyEvent: _handleHomeKeyEvent,
-      child: scaffold,
+    final content = PopScope(
+      // Back from the desk lands on the task list, like backing out of a tool.
+      canPop: !_deskMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _setDeskMode(false);
+      },
+      child: Focus(
+        focusNode: _homeKeyboardFocusNode,
+        autofocus: true,
+        onKeyEvent: _handleHomeKeyEvent,
+        child: scaffold,
+      ),
     );
     if (widget.tagFilter == null) return content;
     // Worklist (and any other tag-filtered instance): an orange accent so the

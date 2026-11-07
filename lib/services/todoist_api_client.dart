@@ -47,12 +47,16 @@ class TodoistApiClient {
   /// v1 list endpoints (`tasks`, `projects`) return one cursor-paginated
   /// page at a time as `{"results": [...], "next_cursor": ...}`, unlike REST
   /// v2's bare array — this walks every page and returns the combined list.
-  Future<List<Map<String, dynamic>>> _fetchAllPages(String path) async {
+  Future<List<Map<String, dynamic>>> _fetchAllPages(
+    String path, {
+    Map<String, String> query = const {},
+  }) async {
     final results = <Map<String, dynamic>>[];
     String? cursor;
     while (true) {
+      final params = {...query, if (cursor != null) 'cursor': cursor};
       final uri = Uri.parse('$baseUrl/$path').replace(
-        queryParameters: cursor == null ? null : {'cursor': cursor},
+        queryParameters: params.isEmpty ? null : params,
       );
       final response = await _client.get(uri, headers: _headers);
       final data = _decode(response);
@@ -95,6 +99,21 @@ class TodoistApiClient {
   /// `TodoistSyncService`.
   Future<List<Map<String, dynamic>>> fetchActiveTasks() =>
       _fetchAllPages('tasks');
+
+  /// The active tasks carrying [label] (the Agent Desk's whole read).
+  Future<List<Map<String, dynamic>>> fetchTasksWithLabel(String label) =>
+      _fetchAllPages('tasks', query: {'label': label});
+
+  /// Replaces a task's labels and nothing else, so a description an agent
+  /// edits at the same moment isn't overwritten.
+  Future<void> updateTaskLabels(String taskId, List<String> labels) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/tasks/$taskId'),
+      headers: _headers,
+      body: jsonEncode({'labels': labels}),
+    );
+    _decode(response);
+  }
 
   Future<Map<String, dynamic>> createTask({
     required String content,

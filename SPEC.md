@@ -3610,43 +3610,69 @@ Tools → **PC Watcher** (feature/start-tool key `pc_watcher`, `Icons.computer`;
   re-downloads; the key action edits/removes the token (`_TokenDialog` owns its controller).
 - Tests: `test/tools/pc_watcher_page_test.dart` (MockClient + mocked SharedPreferences).
 
-### 10.6s Agent Desk (0.4.2)
+### 10.6s Agent Desk (0.4.2, on Todoist since 0.4.3)
 Tools → **Agent Desk** (feature/start-tool key `agent_desk`, `Icons.smart_toy_outlined`;
 `lib/ui/agent_desk_page.dart`, `lib/services/agent_desk_service.dart`,
 `lib/models/agent_desk.dart`): the screen for steering background agents (Claude Code on
-the Beast and in cloud sessions) from the PCs. Meant as the start page on the Beast and the
-laptop (Settings → Default start page → Agent Desk). The plan behind it is
-laptop-builder's `beast/agent-desk/README.md`.
-- **Data: a folder of plain files, one writer per file.** Default `D:\AgentDesk` on Windows
-  with a D: drive, else `<documents>/AgentDesk`; changed with the app-bar folder button
-  (SharedPreferences `agent_desk_folder`, empty = default). Each subfolder (not starting with
-  `.` or `_`) is a project: `brief.md` (`# Name`, the first paragraph = the goal; written by
-  you), `status.json` `{state working|waiting|idle|error, summary, where beast|cloud|both,
-  updatedAt, name?}`, `questions.jsonl` `{id, at, topic, text, options[], priority
-  blocking|normal|later, deadline}` and `log.md` (written by the agent), and
-  `decisions-<device>.jsonl` `{id, at, questionId?, topic, text, via option|text, device}`,
-  appended only by the BestToDo install on that device (`device` = the hostname, lowercased,
-  non `[a-z0-9_-]` → `-`). Two PCs syncing the folder through git therefore never edit the
-  same file. A question is answered once any device's decision names its id. Bad lines or
-  files are skipped. The page re-reads the folder every 15 s.
+the Beast and in cloud sessions) from the PCs.
+- **Data: Todoist tasks labelled `agentdesk`** (the shared folder of 0.4.2 is gone; nothing
+  was ever written to it). The Todoist project is the desk project (Inbox = "General").
+  Contract for agents:
+  - **Question:** title = the question; description = the context in Markdown (big is fine,
+    Todoist's limit is about 16 000 characters; longer goes in a file) with marker lines
+    `[Option: Yes]` (one per suggested answer), `[Topic: Printer]`,
+    `[Priority: blocking|normal|later]`; due date = the deadline; files on comments
+    (`file_attachment`).
+  - **Status:** one task per project, also labelled `agentdesk_status`: title = one-line
+    summary; description = brief and log, with `[State: working|waiting|idle|error]`,
+    `[Where: beast|cloud|both]`, `[Updated: <ISO time>]`.
+  - **Answer:** the desk posts a comment `[Answer] <text>` and adds `agentdesk_answered`,
+    labels only (`TodoistApiClient.updateTaskLabels`), so the description an agent may be
+    editing is never overwritten. The agent reads it and closes the task when done.
+  - **Instruction:** a new task from you labelled `agentdesk` + `agentdesk_instruction`, in
+    the project (created if new). The agent closes it when done.
+- **Separate from the full sync, on purpose.** `AgentDeskService` calls Todoist itself
+  (`GET /tasks?label=agentdesk` + `/projects`, every 30 s while visible and not behind another
+  page; the selected item's comments with each refresh) and never reads or writes the local
+  task list. It needs only `Config.todoistApiToken` (the desk's own Connect card asks for it),
+  not `todoistSyncEnabled`: a PC with a stale or disabled full sync can use the desk safely.
+  The last fetch is cached in `agent_desk_cache.json` so opening shows the desk at once; when
+  a fetch fails the desk stays on screen with a red line. An attachment's token header only
+  goes to `https://*.todoist.com`.
+- **On a device running the full sync** (`TodoistSyncService`): desk tasks are a read-only
+  mirror. New ones skip the approval gate (`_gatesNewTasks`), a pending task labelled later
+  leaves it, they are never pushed, moved or given the metadata trailer (`deskMirror` in step
+  3, `_targetProjectKey` null), a local difference is overwritten from Todoist. They are out
+  of every view: `ItemViews.isVisibleInMainViews` (no toggle lifts it) and `waitingApproval`.
+- **PC layout (≥ 1000 px), three panes:** the queue (**Decide** ranked and numbered, **Later**,
+  **Answered**), the selected item (meta, Open in Todoist, close, title, the description as
+  selectable Markdown, attachments: image thumbnails or file buttons that open in the browser,
+  comments; a fixed answer bar: a tonal button per `[Option]`, type/speak, Send/Enter) and the
+  **projects** (state dot, summary, open count). A project opens in the middle pane: state,
+  where, summary, **Tell the agent what to do next**, the brief, its open and answered items,
+  your instructions. Answered → SnackBar "Sent to <project>" and the next question opens; a
+  failed send keeps the text. ↑/↓ or J/K move through the queue. **Narrow:** one list, items and
+  projects open on their own page.
 - **Ranking** (`AgentDeskRanking`): blocking, then with a deadline (soonest), then oldest,
-  `later` last. **Decide now** = the first three that aren't `later`, side by side at ≥ 900 px
-  (equal height, answer boxes lined up), stacked below that; "+N more waiting" / "N for later".
-- **Answering** (`DeskQuestionCard`, owns its controller): a tonal button per suggested
-  answer, or type/speak (`SpeechInputButton`) and Send/Enter. Sent → SnackBar "Sent to
-  <project>", the card locks, the reload drops it and the next question moves up.
-- **Projects**: a card per project (state dot blue/orange/red/grey, cloud/PC icon for `where`,
-  summary or goal, age, "N open", "N later"), two columns when wide. Tapping opens
-  `AgentDeskProjectPage` (max 960 px wide): status and goal, **Tell the agent what to do next**
-  (a decision without `questionId`, with an optional topic from the project's questions),
-  open questions, **Later** (parked ones), your last 10 decisions, the last 40 lines of
-  `log.md`.
-- **No folder**: a card offers **Set up the desk** (`seed()`: README.md plus five starter
-  projects — 3D builder, Photos and videos, Network and devices, Sensitive documents, Deals —
-  with their briefs and the questions already known, the parked ones as `later`; never
-  overwrites an existing file) or **Choose folder**.
-- Tests: `test/desk/` (service on a temp dir; page on an in-memory fake, no file I/O inside
-  `testWidgets`).
+  `later` last.
+- **Home shell.** On the real home page (`tagFilter == null`) the desk isn't a pushed route: it
+  sits next to the task list in an `IndexedStack`, built on first use and kept alive, under the
+  same drawer (`_deskMode`, `_deskOpened`, `_openTool`, `_goHome`; Back returns to the list).
+  Its app bar has the menu, Refresh and the toggle; the tabs and search belong to the list. The
+  toggle is a `SegmentedButton` **Agent Desk | Home** in both app bars at ≥ 700 px and **Ctrl+D**
+  on desktop; on a phone an icon on the desk leads back. A Worklist/Lemmon instance still pushes
+  the standalone page. Settings → Default start page → Agent Desk opens the same mode.
+- **Autostart on a PC.** `--desk` (`Config.launchOnDesk`, never saved) opens on the desk from the
+  first frame, whatever the start page says, and shows it even when simple mode hides the tool.
+  `tool/install_agent_desk.ps1` copies the app to `%LOCALAPPDATA%\Programs\BestToDo` (no admin)
+  and puts a `--desk` shortcut in the user's Startup folder and Start menu; run again to update.
+  Without `-Source` it takes the newest `windows-v*` GitHub release, which
+  `tool/publish_windows.ps1` builds and publishes (never offered by the updater: no APK and
+  another tag prefix). **Why the exe and not Chrome:** the full app doesn't persist anything on
+  the web (tasks, settings, sync state; §4.2k is only the approvals site).
+- Tests: `test/desk/` (model and service with `MockClient`, page on an in-memory fake, the
+  toggle on a real `HomePage`), the mirror rules in `test/sync/todoist_sync_service_test.dart`,
+  the PC layout in `integration_test/agent_desk_screenshot_test.dart`.
 
 ### 10.7 The rest
 **App Logs**: in-memory `LogService` (ValueNotifier, self-trims >24 h, NOT persisted).

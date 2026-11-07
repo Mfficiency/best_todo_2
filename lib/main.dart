@@ -176,9 +176,10 @@ Future<void> _initStep(String label, Future<void> Function() step) async {
   }
 }
 
-Future<void> main() async {
+Future<void> main([List<String> args = const []]) async {
   StartupTimeService.start();
   WidgetsFlutterBinding.ensureInitialized();
+  Config.launchOnDesk = args.contains('--desk');
   // The approvals website (SPEC §4.2k) is its own small app: none of the
   // phone's startup (backups, alarms, widgets, updates) runs there.
   if (kIsWeb && Config.webApprovalsSite) {

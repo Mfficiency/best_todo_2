@@ -1,16 +1,48 @@
-/// Agent Desk: the questions background agents ask, the decisions you give
-/// them, and each project's status — all read from a shared folder of plain
-/// files (see `AgentDeskService` and SPEC §10.6s). Every file has exactly one
-/// writer: agents write `questions.jsonl`, `status.json` and `log.md`; each
-/// device running BestToDo appends to its own `decisions-<device>.jsonl`, so
-/// two PCs syncing the folder through git never edit the same file.
+import '../services/todoist_metadata_codec.dart';
+import '../utils/label_utils.dart';
 
-/// How urgent a question is. Only [blocking] and [normal] reach the
-/// "Decide now" top three; [later] questions wait on the project page.
+/// Agent Desk: what background agents ask and report, as plain Todoist tasks
+/// (SPEC §10.6s). Every desk task carries the label [agentDeskToken]; its
+/// Todoist project is the desk project; its description is the (big) context
+/// in Markdown with `[Key: value]` marker lines; its comments hold the
+/// attachments and your answers. Nothing here knows about the local task list.
+
+/// How urgent a question is. Only [blocking] and [normal] reach the top of
+/// the queue; [later] questions are parked below them.
 enum DeskPriority { blocking, normal, later }
 
-DeskPriority _priorityFrom(Object? raw) {
-  switch (raw) {
+/// What a project's agent is doing, from its status item's `[State: …]`.
+enum DeskState { working, waiting, idle, error }
+
+/// Project name of a desk task in the Todoist Inbox.
+const String deskGeneralProject = 'General';
+
+final RegExp _markerLine = RegExp(
+  r'^[ \t]*\[(option|priority|topic|state|where|updated):[ \t]*([^\]\n]*)\][ \t]*$',
+  caseSensitive: false,
+  multiLine: true,
+);
+
+/// Splits a description into the visible Markdown and its desk markers
+/// (lowercase key → values in order). Our sync's generated trailer, which a
+/// device running the full Todoist sync may have added, is dropped too.
+(String, Map<String, List<String>>) parseDeskMarkers(String description) {
+  final visible = TodoistMetadataCodec.parse(description).visible;
+  final markers = <String, List<String>>{};
+  for (final m in _markerLine.allMatches(visible)) {
+    final value = m.group(2)!.trim();
+    if (value.isEmpty) continue;
+    markers.putIfAbsent(m.group(1)!.toLowerCase(), () => []).add(value);
+  }
+  final body = visible
+      .replaceAll(_markerLine, '')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .trim();
+  return (body, markers);
+}
+
+DeskPriority _priorityFrom(String? raw) {
+  switch (raw?.toLowerCase()) {
     case 'blocking':
       return DeskPriority.blocking;
     case 'later':
@@ -20,196 +52,244 @@ DeskPriority _priorityFrom(Object? raw) {
   }
 }
 
-DateTime? _date(Object? raw) =>
-    raw is String ? DateTime.tryParse(raw)?.toLocal() : null;
+DeskState _stateFrom(String? raw) {
+  for (final s in DeskState.values) {
+    if (s.name == raw?.toLowerCase()) return s;
+  }
+  return DeskState.idle;
+}
 
-/// A question an agent put on the desk.
-class DeskQuestion {
-  final String id;
-  final String projectId;
+/// A file on one of the task's comments.
+class DeskAttachment {
+  final String name;
+  final String url;
+  final String type;
+
+  const DeskAttachment({required this.name, required this.url, this.type = ''});
+
+  bool get isImage {
+    if (type.toLowerCase().startsWith('image')) return true;
+    final lower = name.toLowerCase();
+    return const ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+        .any(lower.endsWith);
+  }
+
+  static DeskAttachment? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final url = (raw['file_url'] ?? raw['url'])?.toString() ?? '';
+    if (url.isEmpty) return null;
+    final name = (raw['file_name'] ?? raw['title'])?.toString() ?? '';
+    final uri = Uri.tryParse(url);
+    return DeskAttachment(
+      name: name.isNotEmpty
+          ? name
+          : (uri != null && uri.pathSegments.isNotEmpty
+              ? uri.pathSegments.last
+              : url),
+      url: url,
+      type: (raw['file_type'] ?? raw['resource_type'])?.toString() ?? '',
+    );
+  }
+}
+
+/// One comment on a desk task: an agent's note, a file, or your answer.
+class DeskComment {
+  /// The prefix an answer given on the desk starts with.
+  static const String answerPrefix = '[Answer]';
+
+  final String content;
   final DateTime? at;
+  final DeskAttachment? attachment;
+
+  const DeskComment({required this.content, this.at, this.attachment});
+
+  bool get isAnswer => content.trimLeft().startsWith(answerPrefix);
+
+  /// [content] without the answer prefix.
+  String get text => isAnswer
+      ? content.trimLeft().substring(answerPrefix.length).trim()
+      : content.trim();
+
+  factory DeskComment.fromJson(Map<String, dynamic> json) => DeskComment(
+        content: json['content'] as String? ?? '',
+        at: DateTime.tryParse(
+                (json['posted_at'] ?? json['posted'])?.toString() ?? '')
+            ?.toLocal(),
+        attachment: DeskAttachment.fromJson(json['file_attachment']),
+      );
+}
+
+/// A desk task: a question, an instruction or a project's status item.
+class DeskItem {
+  /// The Todoist task id.
+  final String id;
+  final String project;
+  final String title;
+
+  /// The description as Markdown, without markers.
+  final String body;
+  final List<String> labels;
   final String topic;
-  final String text;
   final List<String> options;
   final DeskPriority priority;
   final DateTime? deadline;
+  final DateTime? at;
 
-  const DeskQuestion({
+  /// The state/where/updated markers (status items only).
+  final Map<String, List<String>> markers;
+
+  const DeskItem({
     required this.id,
-    required this.projectId,
-    required this.text,
-    this.at,
+    required this.project,
+    required this.title,
+    this.body = '',
+    this.labels = const [],
     this.topic = '',
     this.options = const [],
     this.priority = DeskPriority.normal,
     this.deadline,
+    this.at,
+    this.markers = const {},
   });
 
-  factory DeskQuestion.fromJson(String projectId, Map<String, dynamic> json) =>
-      DeskQuestion(
-        id: json['id']?.toString() ?? '',
-        projectId: projectId,
-        at: _date(json['at']),
-        topic: json['topic'] as String? ?? '',
-        text: json['text'] as String? ?? '',
-        options: (json['options'] as List?)
-                ?.map((e) => e.toString())
-                .where((e) => e.trim().isNotEmpty)
-                .toList() ??
-            const [],
-        priority: _priorityFrom(json['priority']),
-        deadline: _date(json['deadline']),
-      );
+  bool _has(String token) =>
+      labels.any((l) => l.toLowerCase() == token.toLowerCase());
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        if (at != null) 'at': at!.toUtc().toIso8601String(),
-        if (topic.isNotEmpty) 'topic': topic,
-        'text': text,
-        if (options.isNotEmpty) 'options': options,
-        'priority': priority.name,
-        if (deadline != null) 'deadline': deadline!.toUtc().toIso8601String(),
-      };
+  bool get isStatus => _has(agentDeskStatusToken);
+  bool get isInstruction => _has(agentDeskInstructionToken);
+  bool get isAnswered => _has(agentDeskAnsweredToken);
+
+  /// Still waiting for you.
+  bool get isOpen => !isStatus && !isInstruction && !isAnswered;
+
+  factory DeskItem.fromRemote(
+    Map<String, dynamic> task,
+    Map<String, String> projectNames,
+  ) {
+    final (body, markers) =
+        parseDeskMarkers(task['description'] as String? ?? '');
+    final labels = task['labels'] is List
+        ? (task['labels'] as List).whereType<String>().toList()
+        : const <String>[];
+    final due = task['due'];
+    final dueDate = due is Map ? due['date'] as String? : null;
+    final project = projectNames[task['project_id']?.toString()];
+    return DeskItem(
+      id: task['id']?.toString() ?? '',
+      project: project == null || project.isEmpty ? deskGeneralProject : project,
+      title: task['content'] as String? ?? '',
+      body: body,
+      labels: labels,
+      topic: markers['topic']?.first ?? '',
+      options: markers['option'] ?? const [],
+      priority: _priorityFrom(markers['priority']?.first),
+      deadline:
+          dueDate == null ? null : DateTime.tryParse(dueDate)?.toLocal(),
+      at: DateTime.tryParse(
+              (task['added_at'] ?? task['created_at'])?.toString() ?? '')
+          ?.toLocal(),
+      markers: markers,
+    );
+  }
 }
 
-/// An answer or instruction you gave, from any device.
-class DeskDecision {
-  final String id;
-  final String projectId;
-  final DateTime at;
-  final String? questionId;
-  final String topic;
-  final String text;
-
-  /// 'option' (a suggested answer was tapped) or 'text' (typed or spoken).
-  final String via;
-  final String device;
-
-  const DeskDecision({
-    required this.id,
-    required this.projectId,
-    required this.at,
-    required this.text,
-    this.questionId,
-    this.topic = '',
-    this.via = 'text',
-    this.device = '',
-  });
-
-  factory DeskDecision.fromJson(String projectId, Map<String, dynamic> json) =>
-      DeskDecision(
-        id: json['id']?.toString() ?? '',
-        projectId: projectId,
-        at: _date(json['at']) ?? DateTime.fromMillisecondsSinceEpoch(0),
-        questionId: json['questionId'] as String?,
-        topic: json['topic'] as String? ?? '',
-        text: json['text'] as String? ?? '',
-        via: json['via'] as String? ?? 'text',
-        device: json['device'] as String? ?? '',
-      );
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'at': at.toUtc().toIso8601String(),
-        if (questionId != null) 'questionId': questionId,
-        if (topic.isNotEmpty) 'topic': topic,
-        'text': text,
-        'via': via,
-        if (device.isNotEmpty) 'device': device,
-      };
-}
-
-/// What a project's agent is doing, from its `status.json`.
-enum DeskState { working, waiting, idle, error }
-
-/// One project folder on the desk.
+/// A desk project: every desk task in one Todoist project.
 class DeskProject {
-  final String id;
   final String name;
-  final String goal;
-  final DeskState state;
-  final String summary;
-
-  /// Where its agent runs: 'beast', 'cloud' or 'both' (free text).
-  final String where;
-  final DateTime? updatedAt;
-  final List<DeskQuestion> questions;
-  final List<DeskDecision> decisions;
-
-  /// The last lines of `log.md`, oldest first.
-  final List<String> logTail;
+  final DeskItem? status;
+  final List<DeskItem> open;
+  final List<DeskItem> answered;
+  final List<DeskItem> instructions;
 
   const DeskProject({
-    required this.id,
     required this.name,
-    this.goal = '',
-    this.state = DeskState.idle,
-    this.summary = '',
-    this.where = '',
-    this.updatedAt,
-    this.questions = const [],
-    this.decisions = const [],
-    this.logTail = const [],
+    this.status,
+    this.open = const [],
+    this.answered = const [],
+    this.instructions = const [],
   });
 
-  static DeskState stateFrom(Object? raw) {
-    for (final s in DeskState.values) {
-      if (s.name == raw) return s;
-    }
-    return DeskState.idle;
-  }
+  DeskState get state => _stateFrom(status?.markers['state']?.first);
 
-  Set<String> get _answeredIds =>
-      {for (final d in decisions) if (d.questionId != null) d.questionId!};
+  /// The status item's title: one line on where things stand.
+  String get summary => status?.title ?? '';
 
-  /// Questions without a decision yet, in [AgentDeskRanking] order.
-  List<DeskQuestion> get openQuestions {
-    final answered = _answeredIds;
-    return AgentDeskRanking.sort(
-        questions.where((q) => !answered.contains(q.id)).toList());
-  }
+  /// The status item's description: the goal, the rules, the log.
+  String get brief => status?.body ?? '';
 
-  /// The decision that answered [questionId], if any.
-  DeskDecision? answerTo(String questionId) {
-    for (final d in decisions.reversed) {
-      if (d.questionId == questionId) return d;
-    }
-    return null;
-  }
+  /// Where its agent runs: 'beast', 'cloud' or 'both' (free text).
+  String get where => status?.markers['where']?.first ?? '';
 
-  /// Topics named by this project's questions, in first-seen order.
-  List<String> get topics {
-    final seen = <String>{};
-    for (final q in questions) {
-      if (q.topic.isNotEmpty) seen.add(q.topic);
-    }
-    return seen.toList();
+  DateTime? get updatedAt {
+    final raw = status?.markers['updated']?.first;
+    return raw == null ? null : DateTime.tryParse(raw)?.toLocal();
   }
 }
 
 /// Everything on the desk at one moment.
-class DeskSnapshot {
-  final String folder;
+class DeskBoard {
   final List<DeskProject> projects;
 
-  const DeskSnapshot({required this.folder, required this.projects});
+  const DeskBoard({this.projects = const []});
 
-  DeskProject? project(String id) {
+  bool get isEmpty => projects.isEmpty;
+
+  factory DeskBoard.fromRemote(
+    List<Map<String, dynamic>> tasks,
+    Map<String, String> projectNames,
+  ) {
+    final byProject = <String, List<DeskItem>>{};
+    for (final task in tasks) {
+      final labels = task['labels'];
+      if (labels is! List ||
+          !labels.any((l) =>
+              l is String && l.toLowerCase() == agentDeskToken.toLowerCase())) {
+        continue;
+      }
+      final item = DeskItem.fromRemote(task, projectNames);
+      if (item.id.isEmpty) continue;
+      byProject.putIfAbsent(item.project, () => []).add(item);
+    }
+    final names = byProject.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return DeskBoard(projects: [
+      for (final name in names)
+        DeskProject(
+          name: name,
+          status: byProject[name]!
+              .where((i) => i.isStatus)
+              .cast<DeskItem?>()
+              .firstWhere((_) => true, orElse: () => null),
+          open: AgentDeskRanking.sort(
+              byProject[name]!.where((i) => i.isOpen).toList()),
+          answered: byProject[name]!.where((i) => i.isAnswered).toList(),
+          instructions:
+              byProject[name]!.where((i) => i.isInstruction).toList(),
+        ),
+    ]);
+  }
+
+  DeskProject? project(String name) {
     for (final p in projects) {
-      if (p.id == id) return p;
+      if (p.name == name) return p;
     }
     return null;
   }
 
-  List<DeskQuestion> get openQuestions =>
-      AgentDeskRanking.sort([for (final p in projects) ...p.openQuestions]);
+  DeskItem? item(String id) {
+    for (final p in projects) {
+      for (final i in [...p.open, ...p.answered]) {
+        if (i.id == id) return i;
+      }
+    }
+    return null;
+  }
 
-  /// The "Decide now" row: up to [count] open questions that aren't
-  /// [DeskPriority.later].
-  List<DeskQuestion> topQuestions([int count = 3]) => openQuestions
-      .where((q) => q.priority != DeskPriority.later)
-      .take(count)
-      .toList();
+  /// Every open question, in [AgentDeskRanking] order.
+  List<DeskItem> get open =>
+      AgentDeskRanking.sort([for (final p in projects) ...p.open]);
+
+  List<DeskItem> get answered => [for (final p in projects) ...p.answered];
 }
 
 /// Ordering of open questions: blocking first, then those with a deadline
@@ -221,7 +301,7 @@ class AgentDeskRanking {
         DeskPriority.later => 2,
       };
 
-  static int compare(DeskQuestion a, DeskQuestion b) {
+  static int compare(DeskItem a, DeskItem b) {
     final byPriority = _rank(a.priority).compareTo(_rank(b.priority));
     if (byPriority != 0) return byPriority;
     final da = a.deadline, db = b.deadline;
@@ -235,6 +315,6 @@ class AgentDeskRanking {
     return a.id.compareTo(b.id);
   }
 
-  static List<DeskQuestion> sort(List<DeskQuestion> questions) =>
-      [...questions]..sort(compare);
+  static List<DeskItem> sort(List<DeskItem> items) =>
+      [...items]..sort(compare);
 }

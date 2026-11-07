@@ -204,6 +204,11 @@ class Config {
   /// the task list, so backing out always lands on the tasks.
   static String startTool = 'tasks';
 
+  /// The app was started with `--desk` (the PCs' logon shortcut, see
+  /// tool/install_agent_desk.ps1): it opens on the Agent Desk whatever
+  /// [startTool] says. Never saved.
+  static bool launchOnDesk = false;
+
   /// If true, the home page opens directly in the day-grouped schedule view
   /// instead of the per-tab list view.
   static bool startInScheduleView = false;

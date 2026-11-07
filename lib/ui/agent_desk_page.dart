@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/agent_desk.dart';
 import '../services/agent_desk_service.dart';
+import '../services/todoist_api_client.dart';
 import 'speech_input_button.dart';
 import 'subpage_app_bar.dart';
 
@@ -31,49 +34,90 @@ IconData deskWhereIcon(String where) => switch (where) {
       _ => Icons.computer,
     };
 
-/// Tools → Agent Desk (SPEC §10.6s): the three decisions the background
-/// agents need from you on top, every project below. Answer by tapping a
-/// suggested answer, typing or speaking; the answer is appended to the
-/// project's decisions file in the desk folder, where the project's agent
-/// picks it up. Meant as the start page on the PCs (Settings → Default start
-/// page → Agent Desk), so it is the first thing seen at logon.
+String _deskError(Object e) {
+  if (e is TodoistApiException) {
+    return e.statusCode == 401 ? 'Todoist refused the token' : e.message;
+  }
+  return 'Todoist could not be reached';
+}
+
+Future<void> _openLink(String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
+/// Tools → Agent Desk (SPEC §10.6s): what the background agents need from you,
+/// as Todoist tasks labelled `agentdesk`.
+///
+/// At 1000 px and wider it's a three-pane desk (the queue, the selected item
+/// with its description and attachments, the projects); narrower, a list whose
+/// entries open on their own page. [embedded] leaves out the scaffold: the home
+/// page hosts it next to its task list, under its own app bar and menu.
 class AgentDeskPage extends StatefulWidget {
   final AgentDeskService? service;
+  final bool embedded;
 
-  /// How often the folder is re-read for new questions and status; null
-  /// turns polling off (tests).
+  /// False while it sits hidden behind the task list: no polling then.
+  final bool active;
+
+  /// How often Todoist is asked; null turns polling off (tests).
   final Duration? pollInterval;
   final DateTime Function()? clock;
 
   const AgentDeskPage({
     super.key,
     this.service,
-    this.pollInterval = const Duration(seconds: 15),
+    this.embedded = false,
+    this.active = true,
+    this.pollInterval = const Duration(seconds: 30),
     this.clock,
   });
 
   @override
-  State<AgentDeskPage> createState() => _AgentDeskPageState();
+  State<AgentDeskPage> createState() => AgentDeskPageState();
 }
 
-class _AgentDeskPageState extends State<AgentDeskPage> {
+class AgentDeskPageState extends State<AgentDeskPage> {
+  static const double wideWidth = 1000;
+
   AgentDeskService get _service => widget.service ?? AgentDeskService.instance;
   DateTime _now() => (widget.clock ?? DateTime.now)();
 
-  DeskSnapshot? _snapshot;
-  String _folder = '';
+  DeskBoard? _board;
   bool _loading = true;
+  bool _refreshing = false;
   String? _error;
+  DateTime? _lastRefresh;
   Timer? _poll;
+
+  /// The selected question, or null for the top of the queue.
+  String? _selectedId;
+
+  /// The selected project; wins over [_selectedId] while set.
+  String? _selectedProject;
+
+  /// Bumped by every refresh, so the open item re-reads its comments.
+  int _revision = 0;
 
   @override
   void initState() {
     super.initState();
-    _reload();
+    _start();
     final every = widget.pollInterval;
     if (every != null) {
-      _poll = Timer.periodic(every, (_) => _reload(quiet: true));
+      _poll = Timer.periodic(every, (_) {
+        // Not behind Settings or a dialog, and not behind the task list.
+        if (!widget.active || !mounted) return;
+        if (ModalRoute.of(context)?.isCurrent == false) return;
+        refresh();
+      });
     }
+  }
+
+  @override
+  void didUpdateWidget(AgentDeskPage old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) refresh();
   }
 
   @override
@@ -82,95 +126,170 @@ class _AgentDeskPageState extends State<AgentDeskPage> {
     super.dispose();
   }
 
-  Future<void> _reload({bool quiet = false}) async {
-    if (!quiet && mounted) setState(() => _loading = true);
+  Future<void> _start() async {
+    final cached = await _service.loadCached();
+    if (!mounted) return;
+    setState(() {
+      _board ??= cached;
+      _loading = _service.connected && _board == null;
+    });
+    if (_service.connected && widget.active) await refresh();
+  }
+
+  /// Fetches the desk. What's on screen stays when that fails.
+  Future<void> refresh() async {
+    if (_refreshing || !_service.connected) return;
+    _refreshing = true;
+    if (mounted) setState(() {});
     try {
-      final folder = await _service.folder();
-      final snapshot = await _service.load();
+      final board = await _service.refresh();
       if (!mounted) return;
       setState(() {
-        _folder = folder;
-        _snapshot = snapshot;
+        _board = board;
         _error = null;
+        _lastRefresh = _now();
+        _revision++;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = _deskError(e));
     } finally {
+      _refreshing = false;
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _answer(DeskQuestion q, String text, String via) async {
-    await _sendDecision(
-      projectId: q.projectId,
-      text: text,
-      questionId: q.id,
-      topic: q.topic,
-      via: via,
-    );
+  /// Moves the selection in the queue (arrow keys / J and K, from the home
+  /// page's key handler).
+  void moveSelection(int delta) {
+    final queue = _board?.open ?? const <DeskItem>[];
+    if (queue.isEmpty) return;
+    final current = queue.indexWhere((i) => i.id == _selectedItem(_board!)?.id);
+    final next = (current + delta).clamp(0, queue.length - 1);
+    setState(() {
+      _selectedProject = null;
+      _selectedId = queue[next].id;
+    });
   }
 
-  Future<void> _sendDecision({
-    required String projectId,
-    required String text,
-    String? questionId,
-    String topic = '',
-    String via = 'text',
-  }) async {
-    if (text.trim().isEmpty) return;
-    final messenger = ScaffoldMessenger.of(context);
-    final name = _snapshot?.project(projectId)?.name ?? projectId;
+  DeskItem? _selectedItem(DeskBoard board) {
+    final picked = _selectedId == null ? null : board.item(_selectedId!);
+    if (picked != null) return picked;
+    final queue = board.open;
+    return queue.isEmpty ? null : queue.first;
+  }
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// Returns whether the answer reached Todoist; the pane keeps the text when
+  /// it didn't.
+  Future<bool> _answer(DeskItem item, String text) async {
     try {
-      await _service.decide(
-        projectId: projectId,
-        text: text,
-        questionId: questionId,
-        topic: topic,
-        via: via,
-      );
-      messenger.showSnackBar(SnackBar(content: Text('Sent to $name')));
+      await _service.answer(item, text);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
+      _snack('Not sent: ${_deskError(e)}');
+      return false;
     }
-    await _reload(quiet: true);
+    _snack('Sent to ${item.project}');
+    if (mounted && _selectedId == item.id) setState(() => _selectedId = null);
+    await refresh();
+    return true;
   }
 
-  Future<void> _chooseFolder() async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (_) => _FolderDialog(initial: _folder),
-    );
-    if (result == null) return;
-    await _service.setFolder(result);
-    await _reload();
+  Future<bool> _instruct(String project, String text) async {
+    try {
+      await _service.instruct(project, text);
+    } catch (e) {
+      _snack('Not sent: ${_deskError(e)}');
+      return false;
+    }
+    _snack('Sent to $project');
+    await refresh();
+    return true;
+  }
+
+  Future<void> _close(DeskItem item) async {
+    try {
+      await _service.close(item);
+    } catch (e) {
+      _snack('Not closed: ${_deskError(e)}');
+      return;
+    }
+    if (mounted && _selectedId == item.id) setState(() => _selectedId = null);
+    await refresh();
   }
 
   Future<void> _seed() async {
     try {
       await _service.seed();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not create the folder: $e')));
-      }
+      _snack('Could not set up the desk: ${_deskError(e)}');
     }
-    await _reload();
+    await refresh();
   }
 
-  Future<void> _openProject(DeskProject project) async {
+  Future<void> _connect(String token) async {
+    await _service.connect(token);
+    if (mounted) setState(() => _loading = true);
+    await refresh();
+  }
+
+  void _selectItem(DeskItem item, bool wide) {
+    if (wide) {
+      setState(() {
+        _selectedProject = null;
+        _selectedId = item.id;
+      });
+    } else {
+      _push(item.title, (_) => _itemPane(item));
+    }
+  }
+
+  void _selectProject(DeskProject project, bool wide) {
+    if (wide) {
+      setState(() => _selectedProject = project.name);
+    } else {
+      _push(project.name, (context) => _projectPane(project, wide: false));
+    }
+  }
+
+  Future<void> _push(String title, WidgetBuilder pane) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AgentDeskProjectPage(
-        projectId: project.id,
-        service: _service,
-        clock: widget.clock,
-        pollInterval: widget.pollInterval,
+      builder: (context) => Scaffold(
+        appBar: buildSubpageAppBar(context, title: title),
+        body: pane(context),
       ),
     ));
-    await _reload(quiet: true);
+    await refresh();
   }
+
+  Widget _itemPane(DeskItem item) => DeskItemPane(
+        key: ValueKey('desk-item-${item.id}'),
+        item: item,
+        service: _service,
+        now: _now(),
+        revision: _revision,
+        onAnswer: (text) => _answer(item, text),
+        onClose: () => _close(item),
+      );
+
+  Widget _projectPane(DeskProject project, {required bool wide}) =>
+      DeskProjectPane(
+        key: ValueKey('desk-project-${project.name}'),
+        project: project,
+        now: _now(),
+        onInstruct: (text) => _instruct(project.name, text),
+        onOpenItem: (item) => _selectItem(item, wide),
+      );
 
   @override
   Widget build(BuildContext context) {
+    final body = _body(context);
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: buildSubpageAppBar(
         context,
@@ -179,125 +298,132 @@ class _AgentDeskPageState extends State<AgentDeskPage> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
-            onPressed: _loading ? null : () => _reload(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.folder_open),
-            tooltip: 'Desk folder',
-            onPressed: _chooseFolder,
+            onPressed: _refreshing ? null : refresh,
           ),
         ],
       ),
-      body: _body(context),
+      body: body,
     );
   }
 
   Widget _body(BuildContext context) {
-    final snapshot = _snapshot;
-    if (snapshot == null) {
+    if (!_service.connected) return _ConnectCard(onConnect: _connect);
+    final board = _board;
+    if (board == null) {
       if (_loading) return const Center(child: CircularProgressIndicator());
-      return _SetupCard(
-        folder: _folder,
-        error: _error,
-        onSeed: _seed,
-        onChooseFolder: _chooseFolder,
-      );
+      return _EmptyDesk(error: _error, onSeed: _seed, onRetry: refresh);
     }
-    final theme = Theme.of(context);
-    final top = snapshot.topQuestions();
-    final allOpen = snapshot.openQuestions;
-    final laterCount =
-        allOpen.where((q) => q.priority == DeskPriority.later).length;
-    final waitingCount = allOpen.length - laterCount - top.length;
-    return RefreshIndicator(
-      onRefresh: _reload,
-      child: LayoutBuilder(builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 900;
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-          children: [
-            _SectionTitle(
-              'Decide now',
-              trailing: waitingCount > 0
-                  ? '+$waitingCount more waiting'
-                  : (laterCount > 0 ? '$laterCount for later' : null),
-            ),
-            if (top.isEmpty)
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.check_circle_outline),
-                  title: const Text('Nothing is waiting on you.'),
-                  subtitle: laterCount > 0
-                      ? Text('$laterCount question(s) parked for later, on '
-                          'the project pages.')
-                      : null,
-                ),
-              )
-            else if (wide)
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < top.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 12),
-                      Expanded(
-                          child: _questionCard(snapshot, top[i], i + 1,
-                              fillHeight: true)),
-                    ],
-                    for (var i = top.length; i < 3; i++) ...[
-                      const SizedBox(width: 12),
-                      const Expanded(child: SizedBox.shrink()),
-                    ],
-                  ],
-                ),
-              )
-            else
-              for (var i = 0; i < top.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _questionCard(snapshot, top[i], i + 1),
-                ),
-            const SizedBox(height: 20),
-            _SectionTitle('Projects',
-                trailing: '${snapshot.projects.length} in $_folder'),
-            if (snapshot.projects.isEmpty)
-              Text('No project folders yet in $_folder.',
-                  style: theme.textTheme.bodyMedium),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final p in snapshot.projects)
-                  SizedBox(
-                    width: wide
-                        ? (constraints.maxWidth - 32 - 12) / 2
-                        : constraints.maxWidth - 32,
-                    child: _ProjectCard(
-                      project: p,
-                      now: _now(),
-                      onTap: () => _openProject(p),
-                    ),
-                  ),
-              ],
-            ),
-          ],
+    if (board.isEmpty) {
+      return _EmptyDesk(error: _error, onSeed: _seed, onRetry: refresh);
+    }
+    return LayoutBuilder(builder: (context, constraints) {
+      final wide = constraints.maxWidth >= wideWidth;
+      if (!wide) {
+        return RefreshIndicator(
+          onRefresh: refresh,
+          child: ListView(
+            children: [
+              _statusLine(context),
+              ..._queue(board, wide: false),
+              ..._projects(board, wide: false),
+              const SizedBox(height: 32),
+            ],
+          ),
         );
-      }),
+      }
+      final project =
+          _selectedProject == null ? null : board.project(_selectedProject!);
+      final item = _selectedItem(board);
+      final divider = VerticalDivider(
+          width: 1, color: Theme.of(context).colorScheme.outlineVariant);
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 340,
+            child: ListView(
+              children: [_statusLine(context), ..._queue(board, wide: true)],
+            ),
+          ),
+          divider,
+          Expanded(
+            child: project != null
+                ? _projectPane(project, wide: true)
+                : item != null
+                    ? _itemPane(item)
+                    : const _AllClear(),
+          ),
+          divider,
+          SizedBox(
+            width: 290,
+            child: ListView(children: _projects(board, wide: true)),
+          ),
+        ],
+      );
+    });
+  }
+
+  Widget _statusLine(BuildContext context) {
+    final theme = Theme.of(context);
+    final error = _error;
+    final text = error != null
+        ? '$error. Showing the last known desk.'
+        : _lastRefresh == null
+            ? 'Not updated yet'
+            : 'Updated ${deskAge(_lastRefresh, _now())}';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Text(text,
+          style: theme.textTheme.bodySmall?.copyWith(
+              color: error != null
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.outline)),
     );
   }
 
-  Widget _questionCard(DeskSnapshot snapshot, DeskQuestion q, int rank,
-      {bool fillHeight = false}) {
-    return DeskQuestionCard(
-      fillHeight: fillHeight,
-      key: ValueKey('desk-q-${q.projectId}-${q.id}'),
-      question: q,
-      projectName: snapshot.project(q.projectId)?.name ?? q.projectId,
-      rank: rank,
-      now: _now(),
-      onAnswer: (text, via) => _answer(q, text, via),
-    );
+  List<Widget> _queue(DeskBoard board, {required bool wide}) {
+    final open = board.open;
+    final now_ = open.where((i) => i.priority != DeskPriority.later).toList();
+    final later = open.where((i) => i.priority == DeskPriority.later).toList();
+    final selected =
+        wide && _selectedProject == null ? _selectedItem(board)?.id : null;
+    DeskItemTile tile(DeskItem item, {int? rank}) => DeskItemTile(
+          item: item,
+          rank: rank,
+          now: _now(),
+          selected: item.id == selected,
+          onTap: () => _selectItem(item, wide),
+        );
+    return [
+      _SectionTitle('Decide', trailing: '${now_.length}'),
+      if (now_.isEmpty)
+        const ListTile(
+          dense: true,
+          leading: Icon(Icons.check_circle_outline),
+          title: Text('Nothing is waiting on you.'),
+        ),
+      for (var i = 0; i < now_.length; i++) tile(now_[i], rank: i + 1),
+      if (later.isNotEmpty) ...[
+        _SectionTitle('Later', trailing: '${later.length}'),
+        for (final item in later) tile(item),
+      ],
+      if (board.answered.isNotEmpty) ...[
+        _SectionTitle('Answered', trailing: '${board.answered.length}'),
+        for (final item in board.answered) tile(item),
+      ],
+    ];
   }
+
+  List<Widget> _projects(DeskBoard board, {required bool wide}) => [
+        _SectionTitle('Projects', trailing: '${board.projects.length}'),
+        for (final p in board.projects)
+          DeskProjectTile(
+            project: p,
+            now: _now(),
+            selected: wide && _selectedProject == p.name,
+            onTap: () => _selectProject(p, wide),
+          ),
+      ];
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -309,60 +435,167 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(title.toUpperCase(),
               style: theme.textTheme.labelLarge?.copyWith(
                   letterSpacing: 1.2,
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.primary)),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           if (trailing != null)
-            Expanded(
-              child: Text(trailing!,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.outline)),
-            ),
+            Text(trailing!,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
         ],
       ),
     );
   }
 }
 
-/// One question with its suggested answers and a type/speak box. Owns its
-/// text controller (CLAUDE.md: never dispose one a parent rebuild may still
-/// use).
-class DeskQuestionCard extends StatefulWidget {
-  final DeskQuestion question;
-  final String projectName;
+/// A row of the queue.
+class DeskItemTile extends StatelessWidget {
+  final DeskItem item;
   final int? rank;
   final DateTime now;
-  final void Function(String text, String via) onAnswer;
+  final bool selected;
+  final VoidCallback onTap;
 
-  /// True when the card sits in a row of equal-height cards: the answer box
-  /// is pushed to the bottom so the three boxes line up.
-  final bool fillHeight;
-
-  const DeskQuestionCard({
+  const DeskItemTile({
     super.key,
-    required this.question,
-    required this.projectName,
+    required this.item,
     required this.now,
-    required this.onAnswer,
+    required this.onTap,
     this.rank,
-    this.fillHeight = false,
+    this.selected = false,
   });
 
   @override
-  State<DeskQuestionCard> createState() => _DeskQuestionCardState();
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final meta = [
+      item.project,
+      if (item.topic.isNotEmpty) item.topic,
+      if (item.at != null) deskAge(item.at, now),
+    ].join(' · ');
+    return ListTile(
+      dense: true,
+      selected: selected,
+      selectedTileColor: theme.colorScheme.primaryContainer.withAlpha(90),
+      leading: item.isAnswered
+          ? Icon(Icons.reply, size: 20, color: theme.colorScheme.outline)
+          : CircleAvatar(
+              radius: 12,
+              backgroundColor: item.priority == DeskPriority.blocking
+                  ? theme.colorScheme.errorContainer
+                  : theme.colorScheme.surfaceContainerHighest,
+              child: Text(rank?.toString() ?? '·',
+                  style: theme.textTheme.labelSmall),
+            ),
+      title: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: item.deadline == null
+          ? null
+          : Text('by ${item.deadline!.month}/${item.deadline!.day}',
+              style: theme.textTheme.labelSmall),
+      onTap: onTap,
+    );
+  }
 }
 
-class _DeskQuestionCardState extends State<DeskQuestionCard> {
+/// A row of the projects list.
+class DeskProjectTile extends StatelessWidget {
+  final DeskProject project;
+  final DateTime now;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const DeskProjectTile({
+    super.key,
+    required this.project,
+    required this.now,
+    required this.onTap,
+    this.selected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final urgent =
+        project.open.where((i) => i.priority != DeskPriority.later).length;
+    return ListTile(
+      dense: true,
+      selected: selected,
+      selectedTileColor: theme.colorScheme.primaryContainer.withAlpha(90),
+      leading: Tooltip(
+        message: project.state.name,
+        child: Icon(Icons.circle,
+            size: 12, color: deskStateColor(project.state, theme.colorScheme)),
+      ),
+      minLeadingWidth: 12,
+      title: Text(project.name,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: project.summary.isEmpty
+          ? null
+          : Text(project.summary,
+              maxLines: 2, overflow: TextOverflow.ellipsis),
+      trailing: urgent > 0
+          ? Badge(
+              label: Text('$urgent'),
+              backgroundColor: theme.colorScheme.primary,
+            )
+          : null,
+      onTap: onTap,
+    );
+  }
+}
+
+/// The selected question: its big description, attachments and comments, with
+/// the answer bar fixed to the bottom. Owns its text controller (CLAUDE.md:
+/// never dispose one a parent rebuild may still use).
+class DeskItemPane extends StatefulWidget {
+  final DeskItem item;
+  final AgentDeskService service;
+  final DateTime now;
+
+  /// A change re-reads the comments.
+  final int revision;
+  final Future<bool> Function(String text) onAnswer;
+  final Future<void> Function() onClose;
+
+  const DeskItemPane({
+    super.key,
+    required this.item,
+    required this.service,
+    required this.now,
+    required this.revision,
+    required this.onAnswer,
+    required this.onClose,
+  });
+
+  @override
+  State<DeskItemPane> createState() => _DeskItemPaneState();
+}
+
+class _DeskItemPaneState extends State<DeskItemPane> {
   final TextEditingController _controller = TextEditingController();
-  bool _sent = false;
+  List<DeskComment>? _comments;
+  String? _commentsError;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComments();
+  }
+
+  @override
+  void didUpdateWidget(DeskItemPane old) {
+    super.didUpdateWidget(old);
+    if (old.revision != widget.revision) _loadComments();
+  }
 
   @override
   void dispose() {
@@ -370,194 +603,244 @@ class _DeskQuestionCardState extends State<DeskQuestionCard> {
     super.dispose();
   }
 
-  void _send(String text, String via) {
-    if (text.trim().isEmpty || _sent) return;
-    setState(() => _sent = true);
-    widget.onAnswer(text.trim(), via);
+  Future<void> _loadComments() async {
+    try {
+      final comments = await widget.service.comments(widget.item);
+      if (mounted) {
+        setState(() {
+          _comments = comments;
+          _commentsError = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _commentsError = _deskError(e));
+    }
+  }
+
+  Future<void> _send(String text) async {
+    if (text.trim().isEmpty || _sending) return;
+    setState(() => _sending = true);
+    final sent = await widget.onAnswer(text.trim());
+    if (!mounted) return;
+    setState(() => _sending = false);
+    if (sent) _controller.clear();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final q = widget.question;
+    final item = widget.item;
+    final comments = _comments ?? const <DeskComment>[];
+    final attachments = [
+      for (final c in comments)
+        if (c.attachment != null) c.attachment!,
+    ];
+    final notes = comments.where((c) => c.text.isNotEmpty).toList();
     final meta = [
-      widget.projectName,
-      if (q.topic.isNotEmpty) q.topic,
-      if (q.at != null) deskAge(q.at, widget.now),
+      item.project,
+      if (item.topic.isNotEmpty) item.topic,
+      if (item.at != null) deskAge(item.at, widget.now),
+      if (item.deadline != null)
+        'by ${item.deadline!.month}/${item.deadline!.day}',
     ].join(' · ');
-    return Card(
-      shape: q.priority == DeskPriority.blocking
-          ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: theme.colorScheme.error, width: 1.5),
-            )
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                if (widget.rank != null) ...[
-                  CircleAvatar(
-                    radius: 12,
-                    backgroundColor: theme.colorScheme.primaryContainer,
-                    child: Text('${widget.rank}',
-                        style: theme.textTheme.labelMedium),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Text(meta,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelMedium
-                          ?.copyWith(color: theme.colorScheme.outline)),
-                ),
-                if (q.priority == DeskPriority.blocking)
-                  Text('blocking',
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: theme.colorScheme.error)),
-                if (q.deadline != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8, right: 8),
-                    child: Text(
-                        'by ${q.deadline!.month}/${q.deadline!.day}',
-                        style: theme.textTheme.labelSmall),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(q.text, style: theme.textTheme.titleMedium),
-            ),
-            const SizedBox(height: 8),
-            if (q.options.isNotEmpty)
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
                 children: [
-                  for (final option in q.options)
-                    FilledButton.tonal(
-                      onPressed: _sent ? null : () => _send(option, 'option'),
-                      child: Text(option),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(meta,
+                            style: theme.textTheme.labelMedium
+                                ?.copyWith(color: theme.colorScheme.outline)),
+                      ),
+                      if (item.priority == DeskPriority.blocking)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Text('blocking',
+                              style: theme.textTheme.labelSmall
+                                  ?.copyWith(color: theme.colorScheme.error)),
+                        ),
+                      IconButton(
+                        tooltip: 'Open in Todoist',
+                        icon: const Icon(Icons.open_in_new, size: 20),
+                        onPressed: () =>
+                            _openLink(AgentDeskService.todoistUrl(item)),
+                      ),
+                      IconButton(
+                        tooltip: 'Close this item',
+                        icon: const Icon(Icons.check, size: 20),
+                        onPressed: widget.onClose,
+                      ),
+                    ],
+                  ),
+                  SelectableText(item.title,
+                      style: theme.textTheme.headlineSmall),
+                  if (item.body.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _Markdown(item.body),
+                  ],
+                  if (attachments.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _SectionLabel('Attachments (${attachments.length})'),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final a in attachments)
+                          _AttachmentView(
+                              attachment: a, service: widget.service),
+                      ],
                     ),
+                  ],
+                  if (notes.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _SectionLabel('Comments (${notes.length})'),
+                    for (final c in notes)
+                      _CommentView(comment: c, now: widget.now),
+                  ],
+                  if (_commentsError != null) ...[
+                    const SizedBox(height: 12),
+                    Text('Attachments and comments: $_commentsError',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.error)),
+                  ],
                 ],
               ),
-            widget.fillHeight ? const Spacer() : const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    enabled: !_sent,
-                    minLines: 1,
-                    maxLines: 4,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (t) => _send(t, 'text'),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: _sent
-                          ? 'Sent'
-                          : (q.options.isEmpty
-                              ? 'Type or speak your answer'
-                              : 'Or say something else'),
-                      border: InputBorder.none,
-                    ),
+            ),
+          ),
+        ),
+        if (item.isOpen)
+          Material(
+            elevation: 3,
+            color: theme.colorScheme.surfaceContainerLow,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 10, 16, 10),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (item.options.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              for (final option in item.options)
+                                FilledButton.tonal(
+                                  onPressed:
+                                      _sending ? null : () => _send(option),
+                                  child: Text(option),
+                                ),
+                            ],
+                          ),
+                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _controller,
+                              enabled: !_sending,
+                              minLines: 1,
+                              maxLines: 5,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: _send,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                hintText: item.options.isEmpty
+                                    ? 'Type or speak your answer'
+                                    : 'Or say something else',
+                              ),
+                            ),
+                          ),
+                          SpeechInputButton(controller: _controller),
+                          IconButton(
+                            tooltip: 'Send answer',
+                            icon: const Icon(Icons.send),
+                            onPressed: _sending
+                                ? null
+                                : () => _send(_controller.text),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                SpeechInputButton(controller: _controller),
-                IconButton(
-                  tooltip: 'Send answer',
-                  icon: const Icon(Icons.send),
-                  onPressed: _sent ? null : () => _send(_controller.text, 'text'),
-                ),
-              ],
+              ),
             ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 }
 
-class _ProjectCard extends StatelessWidget {
-  final DeskProject project;
-  final DateTime now;
-  final VoidCallback onTap;
-  const _ProjectCard(
-      {required this.project, required this.now, required this.onTap});
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel(this.text);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final open = project.openQuestions;
-    final urgent = open.where((q) => q.priority != DeskPriority.later).length;
-    final later = open.length - urgent;
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    return Text(text,
+        style: theme.textTheme.titleSmall
+            ?.copyWith(color: theme.colorScheme.outline));
+  }
+}
+
+class _Markdown extends StatelessWidget {
+  final String data;
+  const _Markdown(this.data);
+
+  @override
+  Widget build(BuildContext context) => MarkdownBody(
+        data: data,
+        selectable: true,
+        onTapLink: (_, href, __) {
+          if (href != null) _openLink(href);
+        },
+      );
+}
+
+/// An image shows as a thumbnail; anything else, or an image that won't load,
+/// as a file button. Both open in the browser.
+class _AttachmentView extends StatelessWidget {
+  final DeskAttachment attachment;
+  final AgentDeskService service;
+  const _AttachmentView({required this.attachment, required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    final file = OutlinedButton.icon(
+      icon: const Icon(Icons.attach_file, size: 18),
+      label: Text(attachment.name, overflow: TextOverflow.ellipsis),
+      onPressed: () => _openLink(attachment.url),
+    );
+    if (!attachment.isImage) return file;
+    return Tooltip(
+      message: attachment.name,
       child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.circle,
-                      size: 12,
-                      color: deskStateColor(project.state, theme.colorScheme)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(project.name,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold)),
-                  ),
-                  Tooltip(
-                    message: 'Runs on: ${project.where.isEmpty ? 'not set' : project.where}',
-                    child: Icon(deskWhereIcon(project.where),
-                        size: 18, color: theme.colorScheme.outline),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                project.summary.isNotEmpty ? project.summary : project.goal,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Text(project.state.name,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                          color: deskStateColor(
-                              project.state, theme.colorScheme))),
-                  if (project.updatedAt != null)
-                    Text(' · ${deskAge(project.updatedAt, now)}',
-                        style: theme.textTheme.labelMedium
-                            ?.copyWith(color: theme.colorScheme.outline)),
-                  const Spacer(),
-                  if (urgent > 0)
-                    Chip(
-                      visualDensity: VisualDensity.compact,
-                      label: Text('$urgent open'),
-                    ),
-                  if (later > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: Text('$later later',
-                          style: theme.textTheme.labelMedium
-                              ?.copyWith(color: theme.colorScheme.outline)),
-                    ),
-                ],
-              ),
-            ],
+        onTap: () => _openLink(attachment.url),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            attachment.url,
+            height: 150,
+            fit: BoxFit.cover,
+            headers: service.headersFor(attachment.url),
+            errorBuilder: (_, __, ___) => file,
           ),
         ),
       ),
@@ -565,17 +848,207 @@ class _ProjectCard extends StatelessWidget {
   }
 }
 
-class _SetupCard extends StatelessWidget {
-  final String folder;
+class _CommentView extends StatelessWidget {
+  final DeskComment comment;
+  final DateTime now;
+  const _CommentView({required this.comment, required this.now});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(comment.isAnswer ? Icons.reply : Icons.smart_toy_outlined,
+              size: 18, color: theme.colorScheme.outline),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Markdown(comment.text),
+                if (comment.at != null)
+                  Text(
+                      '${comment.isAnswer ? 'You, ' : ''}${deskAge(comment.at, now)}',
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: theme.colorScheme.outline)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A project: where it stands, its brief and log, "tell the agent", its items.
+class DeskProjectPane extends StatefulWidget {
+  final DeskProject project;
+  final DateTime now;
+  final Future<bool> Function(String text) onInstruct;
+  final void Function(DeskItem item) onOpenItem;
+
+  const DeskProjectPane({
+    super.key,
+    required this.project,
+    required this.now,
+    required this.onInstruct,
+    required this.onOpenItem,
+  });
+
+  @override
+  State<DeskProjectPane> createState() => _DeskProjectPaneState();
+}
+
+class _DeskProjectPaneState extends State<DeskProjectPane> {
+  final TextEditingController _instruction = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _instruction.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _instruction.text;
+    if (text.trim().isEmpty || _sending) return;
+    setState(() => _sending = true);
+    final sent = await widget.onInstruct(text.trim());
+    if (!mounted) return;
+    setState(() => _sending = false);
+    if (sent) _instruction.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final project = widget.project;
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 860),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          children: [
+            Text(project.name, style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.circle,
+                    size: 12,
+                    color: deskStateColor(project.state, theme.colorScheme)),
+                const SizedBox(width: 8),
+                Text(project.state.name, style: theme.textTheme.titleSmall),
+                if (project.updatedAt != null)
+                  Text(' · ${deskAge(project.updatedAt, widget.now)}',
+                      style: theme.textTheme.bodySmall),
+                if (project.where.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  Icon(deskWhereIcon(project.where),
+                      size: 18, color: theme.colorScheme.outline),
+                  const SizedBox(width: 4),
+                  Text(project.where, style: theme.textTheme.bodySmall),
+                ],
+              ],
+            ),
+            if (project.summary.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              SelectableText(project.summary,
+                  style: theme.textTheme.titleMedium),
+            ],
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _instruction,
+                        enabled: !_sending,
+                        minLines: 1,
+                        maxLines: 5,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          hintText: 'Tell the agent what to do next',
+                        ),
+                      ),
+                    ),
+                    SpeechInputButton(controller: _instruction),
+                    IconButton(
+                      tooltip: 'Send to agent',
+                      icon: const Icon(Icons.send),
+                      onPressed: _sending ? null : _send,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (project.brief.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _Markdown(project.brief),
+            ],
+            if (project.open.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _SectionLabel('Open questions (${project.open.length})'),
+              for (final item in project.open)
+                DeskItemTile(
+                  item: item,
+                  now: widget.now,
+                  onTap: () => widget.onOpenItem(item),
+                ),
+            ],
+            if (project.answered.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _SectionLabel('Answered (${project.answered.length})'),
+              for (final item in project.answered)
+                DeskItemTile(
+                  item: item,
+                  now: widget.now,
+                  onTap: () => widget.onOpenItem(item),
+                ),
+            ],
+            if (project.instructions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _SectionLabel(
+                  'Your instructions (${project.instructions.length})'),
+              for (final item in project.instructions)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.campaign_outlined, size: 20),
+                  title: Text(item.title),
+                  subtitle: Text(deskAge(item.at, widget.now)),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AllClear extends StatelessWidget {
+  const _AllClear();
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Text('Nothing is waiting on you.',
+            style: Theme.of(context).textTheme.titleMedium),
+      );
+}
+
+class _EmptyDesk extends StatelessWidget {
   final String? error;
   final VoidCallback onSeed;
-  final VoidCallback onChooseFolder;
-  const _SetupCard({
-    required this.folder,
-    required this.onSeed,
-    required this.onChooseFolder,
-    this.error,
-  });
+  final VoidCallback onRetry;
+  const _EmptyDesk({required this.onSeed, required this.onRetry, this.error});
 
   @override
   Widget build(BuildContext context) {
@@ -591,15 +1064,13 @@ class _SetupCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('No desk yet', style: theme.textTheme.titleLarge),
+                Text('Nothing on the desk yet', style: theme.textTheme.titleLarge),
                 const SizedBox(height: 8),
                 Text(
-                  'The Agent Desk reads a folder that the agents write their '
-                  'questions to. There is none at:\n$folder\n\n'
-                  'Set it up with the five starter projects (3D builder, '
-                  'photos, network, sensitive documents, deals) and the '
-                  'questions already known, or point it at the folder '
-                  'another PC syncs.',
+                  'The desk shows every Todoist task with the label agentdesk. '
+                  'Set it up with five starter projects (3D builder, photos, '
+                  'network, sensitive documents, deals) and the questions '
+                  'already known. They are created in your Todoist.',
                   style: theme.textTheme.bodyMedium,
                 ),
                 if (error != null) ...[
@@ -617,8 +1088,8 @@ class _SetupCard extends StatelessWidget {
                       child: const Text('Set up the desk'),
                     ),
                     OutlinedButton(
-                      onPressed: onChooseFolder,
-                      child: const Text('Choose folder'),
+                      onPressed: onRetry,
+                      child: const Text('Check again'),
                     ),
                   ],
                 ),
@@ -631,17 +1102,19 @@ class _SetupCard extends StatelessWidget {
   }
 }
 
-class _FolderDialog extends StatefulWidget {
-  final String initial;
-  const _FolderDialog({required this.initial});
+/// Asks for the Todoist token. Saving it doesn't switch the full sync on.
+class _ConnectCard extends StatefulWidget {
+  final Future<void> Function(String token) onConnect;
+  const _ConnectCard({required this.onConnect});
 
   @override
-  State<_FolderDialog> createState() => _FolderDialogState();
+  State<_ConnectCard> createState() => _ConnectCardState();
 }
 
-class _FolderDialogState extends State<_FolderDialog> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initial);
+class _ConnectCardState extends State<_ConnectCard> {
+  final TextEditingController _controller = TextEditingController();
+  bool _busy = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -649,290 +1122,66 @@ class _FolderDialogState extends State<_FolderDialog> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Desk folder'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('The folder the agents write to. Leave empty for the '
-              'default (D:\\AgentDesk on a PC with a D: drive).'),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Folder'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
-/// One project: its status, an "instruct the agent" box, every open
-/// question (the parked ones under Later), your recent decisions and the end
-/// of the agent's log.
-class AgentDeskProjectPage extends StatefulWidget {
-  final String projectId;
-  final AgentDeskService? service;
-  final Duration? pollInterval;
-  final DateTime Function()? clock;
-
-  const AgentDeskProjectPage({
-    super.key,
-    required this.projectId,
-    this.service,
-    this.pollInterval = const Duration(seconds: 15),
-    this.clock,
-  });
-
-  @override
-  State<AgentDeskProjectPage> createState() => _AgentDeskProjectPageState();
-}
-
-class _AgentDeskProjectPageState extends State<AgentDeskProjectPage> {
-  AgentDeskService get _service => widget.service ?? AgentDeskService.instance;
-  DateTime _now() => (widget.clock ?? DateTime.now)();
-
-  DeskProject? _project;
-  bool _loading = true;
-  Timer? _poll;
-  final TextEditingController _instruction = TextEditingController();
-  String _topic = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _reload();
-    final every = widget.pollInterval;
-    if (every != null) {
-      _poll = Timer.periodic(every, (_) => _reload());
-    }
-  }
-
-  @override
-  void dispose() {
-    _poll?.cancel();
-    _instruction.dispose();
-    super.dispose();
-  }
-
-  Future<void> _reload() async {
+  Future<void> _submit() async {
+    if (_controller.text.trim().isEmpty || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
-      final snapshot = await _service.load();
-      if (!mounted) return;
-      setState(() => _project = snapshot?.project(widget.projectId));
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _decide(String text,
-      {String? questionId, String topic = '', String via = 'text'}) async {
-    if (text.trim().isEmpty) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await _service.decide(
-        projectId: widget.projectId,
-        text: text,
-        questionId: questionId,
-        topic: topic,
-        via: via,
-      );
-      messenger.showSnackBar(SnackBar(
-          content: Text('Sent to ${_project?.name ?? widget.projectId}')));
+      await widget.onConnect(_controller.text);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
+      if (mounted) setState(() => _error = _deskError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    await _reload();
-  }
-
-  void _sendInstruction() {
-    final text = _instruction.text;
-    if (text.trim().isEmpty) return;
-    _instruction.clear();
-    _decide(text, topic: _topic);
   }
 
   @override
   Widget build(BuildContext context) {
-    final project = _project;
-    return Scaffold(
-      appBar: buildSubpageAppBar(
-        context,
-        title: project?.name ?? 'Project',
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: _reload,
-          ),
-        ],
-      ),
-      body: project == null
-          ? Center(
-              child: _loading
-                  ? const CircularProgressIndicator()
-                  : const Text('This project is no longer on the desk.'))
-          : Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 960),
-                child: _body(context, project),
-              ),
-            ),
-    );
-  }
-
-  Widget _body(BuildContext context, DeskProject project) {
     final theme = Theme.of(context);
-    final now = _now();
-    final open = project.openQuestions;
-    final current = open.where((q) => q.priority != DeskPriority.later).toList();
-    final later = open.where((q) => q.priority == DeskPriority.later).toList();
-    final recent = project.decisions.reversed.take(10).toList();
-    final questionText = {for (final q in project.questions) q.id: q.text};
-    final topics = project.topics;
-    Widget card(DeskQuestion q) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: DeskQuestionCard(
-            key: ValueKey('desk-pq-${q.id}'),
-            question: q,
-            projectName: project.name,
-            now: now,
-            onAnswer: (text, via) => _decide(text,
-                questionId: q.id, topic: q.topic, via: via),
-          ),
-        );
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-      children: [
-        Row(
-          children: [
-            Icon(Icons.circle,
-                size: 12, color: deskStateColor(project.state, theme.colorScheme)),
-            const SizedBox(width: 8),
-            Text(project.state.name, style: theme.textTheme.titleSmall),
-            if (project.updatedAt != null)
-              Text(' · ${deskAge(project.updatedAt, now)}',
-                  style: theme.textTheme.bodySmall),
-            const Spacer(),
-            Icon(deskWhereIcon(project.where),
-                size: 18, color: theme.colorScheme.outline),
-            const SizedBox(width: 4),
-            Text(project.where, style: theme.textTheme.bodySmall),
-          ],
-        ),
-        if (project.summary.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(project.summary, style: theme.textTheme.bodyLarge),
-        ],
-        if (project.goal.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(project.goal,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.outline)),
-        ],
-        const SizedBox(height: 16),
-        Card(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Card(
+          margin: const EdgeInsets.all(16),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-            child: Row(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (topics.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: DropdownButton<String>(
-                      value: _topic,
-                      underline: const SizedBox.shrink(),
-                      items: [
-                        const DropdownMenuItem(value: '', child: Text('General')),
-                        for (final t in topics)
-                          DropdownMenuItem(value: t, child: Text(t)),
-                      ],
-                      onChanged: (v) => setState(() => _topic = v ?? ''),
-                    ),
-                  ),
-                Expanded(
-                  child: TextField(
-                    controller: _instruction,
-                    minLines: 1,
-                    maxLines: 4,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendInstruction(),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: InputBorder.none,
-                      hintText: 'Tell the agent what to do next',
-                    ),
-                  ),
+                Text('Connect Todoist', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text(
+                  'The desk lives in your Todoist. Paste your API token '
+                  '(Todoist: Settings > Integrations > Developer). The desk '
+                  'only touches tasks labelled agentdesk; your task list here '
+                  'stays as it is and the sync setting is not changed.',
+                  style: theme.textTheme.bodyMedium,
                 ),
-                SpeechInputButton(controller: _instruction),
-                IconButton(
-                  tooltip: 'Send to agent',
-                  icon: const Icon(Icons.send),
-                  onPressed: _sendInstruction,
+                TextField(
+                  controller: _controller,
+                  obscureText: true,
+                  enabled: !_busy,
+                  onSubmitted: (_) => _submit(),
+                  decoration: const InputDecoration(labelText: 'API token'),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_error!,
+                      style: TextStyle(color: theme.colorScheme.error)),
+                ],
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _busy ? null : _submit,
+                  child: const Text('Connect'),
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        _SectionTitle('Open questions', trailing: '${current.length}'),
-        if (current.isEmpty)
-          Text('None.', style: theme.textTheme.bodyMedium),
-        for (final q in current) card(q),
-        if (later.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _SectionTitle('Later', trailing: '${later.length} parked'),
-          for (final q in later) card(q),
-        ],
-        const SizedBox(height: 12),
-        _SectionTitle('Your decisions', trailing: recent.isEmpty ? null : 'newest first'),
-        if (recent.isEmpty) Text('None yet.', style: theme.textTheme.bodyMedium),
-        for (final d in recent)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(d.questionId == null ? Icons.campaign_outlined : Icons.reply,
-                size: 20),
-            title: Text(d.text),
-            subtitle: Text([
-              if (d.questionId != null && questionText[d.questionId] != null)
-                questionText[d.questionId]!,
-              if (d.topic.isNotEmpty && d.questionId == null) d.topic,
-              '${deskAge(d.at, now)}${d.device.isEmpty ? '' : ' on ${d.device}'}',
-            ].join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis),
-          ),
-        const SizedBox(height: 12),
-        const _SectionTitle('Agent log'),
-        if (project.logTail.isEmpty)
-          Text('Empty.', style: theme.textTheme.bodyMedium)
-        else
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SelectableText(
-              project.logTail.join('\n'),
-              style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
-            ),
-          ),
-      ],
+      ),
     );
   }
 }

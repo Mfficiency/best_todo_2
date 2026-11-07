@@ -677,7 +677,12 @@ class TodoistSyncService {
               ) !=
               null;
 
-      if (localChanged && !approvedRemotely) {
+      // Agent Desk tasks are a read-only mirror here: the desk writes to
+      // Todoist itself and their big descriptions are the agents'. Never
+      // pushed, so never moved to Inbox/Future or given a metadata trailer.
+      final deskMirror = hasAgentDeskToken(_labelsFromRemote(remoteTask));
+
+      if (localChanged && !approvedRemotely && !deskMirror) {
         final todoistProjectId = await _todoistProjectFor(
           client,
           task,
@@ -714,7 +719,7 @@ class TodoistSyncService {
         );
         entry.syncedAt = now;
         changeCount++;
-      } else if (remoteChanged || approvedRemotely) {
+      } else if (remoteChanged || approvedRemotely || (deskMirror && localChanged)) {
         _applyRemoteToLocal(task, remoteTask, todoistToLocalProject);
         entry.localFingerprint = _localFingerprint(task);
         entry.remoteFingerprint = remoteFp;
@@ -885,6 +890,8 @@ class TodoistSyncService {
   /// it has one, else the dedicated Wishlist/Future project, else none
   /// (Todoist Inbox). See the class doc.
   String? _targetProjectKey(Task task) {
+    // An undated desk task isn't a Future-bucket task (see deskMirror).
+    if (hasAgentDeskToken(task.label)) return null;
     if (task.isWish) return _wishlistProjectKey;
     if (task.projectId != null) return task.projectId;
     if (Task.isFutureBucketDue(task.dueDate)) return _futureProjectKey;
@@ -987,7 +994,9 @@ class TodoistSyncService {
     final (visible, markers) = parseVoiceMarkers(parts.visible);
     task.description = visible;
     if (markers.obsidian != null) task.obsidianLink = markers.obsidian;
-    final stillPending = hasWaitingApprovalToken(task.label);
+    // A task labelled for the Agent Desk later on leaves the approval gate.
+    final stillPending = hasWaitingApprovalToken(task.label) &&
+        !hasAgentDeskToken(_labelsFromRemote(remoteTask));
     final meta = parts.meta;
     if (meta != null) {
       task.note = meta['note'] as String? ?? '';
@@ -1180,8 +1189,10 @@ class TodoistSyncService {
   /// [_taskFromRemote]). On the approvals website (SPEC §4.2k) — a fresh
   /// browser has never seen *any* task — only those carrying the gate as a
   /// real Todoist label, i.e. the voice-inbox routine's items.
+  /// Agent Desk tasks never: they belong to the desk, not to the approval list.
   bool _gatesNewTasks(String remoteLabels) =>
-      !Config.webApprovalsSite || hasWaitingApprovalToken(remoteLabels);
+      !hasAgentDeskToken(remoteLabels) &&
+      (!Config.webApprovalsSite || hasWaitingApprovalToken(remoteLabels));
 
   /// When the task was approved on another device (the approvals website,
   /// or another phone): the `approvedAt` the approving side writes into the

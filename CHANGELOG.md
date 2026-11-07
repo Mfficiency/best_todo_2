@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.3] - 2026-11-07
+- Agent Desk rebuilt for the PC: it now lives in your Todoist. Every question is a Todoist task labelled agentdesk, with its big description and attachments, so the same desk is on every device. New three-part screen: the queue, the open item with its text, files and comments, and the projects. It sits next to your task list: switch with the Agent Desk | Home button or Ctrl+D, the menu stays. Installed on a PC, it opens on the desk by itself at every logon
+
 ## [0.4.2] - 2026-11-07
 - New tool: Agent Desk (Tools → Agent Desk), the screen for steering the agents that work in the background. On top, the three decisions they need from you; below, every project with what its agent is doing. Answer with a tap on a suggested answer, by typing or by speaking. Open a project to tell its agent what to do next, see the questions parked for later, your earlier answers and the agent's log. It reads a shared folder (D:\AgentDesk on the PCs) and can set that up with the first five projects: 3D builder, photos, network, sensitive documents and deals. Make it the start page in Settings → Default start page
 

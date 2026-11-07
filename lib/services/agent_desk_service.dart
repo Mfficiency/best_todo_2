@@ -1,465 +1,331 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
-import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config.dart';
 import '../models/agent_desk.dart';
+import '../utils/label_utils.dart';
+import 'todoist_api_client.dart';
 
-/// Reads and writes the Agent Desk folder (SPEC §10.6s): one subfolder per
-/// project holding
+/// The Agent Desk's connection to Todoist (SPEC §10.6s).
 ///
-/// - `brief.md`: `# Name`, then the goal (first paragraph) and the rules;
-/// - `status.json`: `{state, summary, where, updatedAt}` (written by agents);
-/// - `questions.jsonl`: one [DeskQuestion] per line (written by agents);
-/// - `decisions-<device>.jsonl`: one [DeskDecision] per line, written only
-///   by the BestToDo install on that device (append-only);
-/// - `log.md`: what the agent did, plain text (written by agents).
+/// The desk talks to Todoist itself and only ever touches tasks labelled
+/// [agentDeskToken]. It never reads or writes the local task list and doesn't
+/// need the two-way sync switched on, only the token: a PC whose full sync is
+/// off (or stale) can use the desk without its local list reaching Todoist.
+/// A device that does run the full sync mirrors desk tasks read-only and keeps
+/// them out of every other view (`TodoistSyncService`, `ItemViews`).
 ///
-/// The folder is the whole interface: the agents on the Beast, the cloud
-/// sessions (through a git branch the runner pulls in), Hermes (read-only)
-/// and this page all meet there. Folders starting with `.` or `_` are not
-/// projects. Read errors on single files are skipped so one bad line never
-/// hides the rest of the desk.
+/// The contract for agents:
+///
+/// - **Question:** a task labelled `agentdesk` in the project's Todoist
+///   project. The title is the question, the description the context in
+///   Markdown, with marker lines `[Option: Yes]` (one per suggested answer),
+///   `[Topic: Printer]` and `[Priority: blocking|normal|later]`; the due date
+///   is the deadline. Files go on comments.
+/// - **Status:** one task per project labelled `agentdesk` and
+///   `agentdesk_status`. The title is the one-line summary, the description
+///   holds the brief and the log, with `[State: working|waiting|idle|error]`,
+///   `[Where: beast|cloud|both]` and `[Updated: <ISO time>]`.
+/// - **Answer:** the desk posts a comment `[Answer] <text>` and adds the label
+///   `agentdesk_answered`. The agent reads it and closes the task when done.
+/// - **Instruction:** a new task from you, labelled `agentdesk` and
+///   `agentdesk_instruction`. The agent closes it when done.
 class AgentDeskService {
   static AgentDeskService instance = AgentDeskService();
 
-  static const String folderPrefKey = 'agent_desk_folder';
-  static const int logTailLines = 40;
+  static const String cacheFileName = 'agent_desk_cache.json';
 
-  final String? _folderOverride;
-  final String? _deviceOverride;
-  final DateTime Function() _clock;
+  final http.Client Function()? _httpClient;
+  final String? _tokenOverride;
 
-  AgentDeskService({
-    String? folder,
-    String? device,
-    DateTime Function()? clock,
-  })  : _folderOverride = folder,
-        _deviceOverride = device,
-        _clock = clock ?? DateTime.now;
+  AgentDeskService({http.Client Function()? httpClient, String? token})
+      : _httpClient = httpClient,
+        _tokenOverride = token;
 
-  /// This device's name, used in its decisions file and on each decision.
-  String get device {
-    final raw = _deviceOverride ?? _hostname();
-    final safe = raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '-');
-    return safe.isEmpty ? 'device' : safe;
-  }
+  String get _token => (_tokenOverride ?? Config.todoistApiToken).trim();
 
-  static String _hostname() {
+  /// Whether a Todoist token is set on this device.
+  bool get connected => _token.isNotEmpty;
+
+  TodoistApiClient _client([String? token]) => TodoistApiClient(
+        apiToken: token ?? _token,
+        client: _httpClient?.call(),
+      );
+
+  Future<T> _withClient<T>(Future<T> Function(TodoistApiClient) run) async {
+    final client = _client();
     try {
-      return Platform.localHostname;
-    } catch (_) {
-      return 'device';
+      return await run(client);
+    } finally {
+      client.close();
     }
   }
 
-  /// The desk folder: the one chosen in the page's folder dialog, else
-  /// `D:\AgentDesk` on a Windows PC with a D: drive, else `AgentDesk` in
-  /// the app's documents folder.
-  Future<String> folder() async {
-    final override = _folderOverride;
-    if (override != null) return override;
+  /// Checks [token] against Todoist and saves it. Throws when it's refused.
+  /// The full sync's own on/off switch stays as it is.
+  Future<void> connect(String token) async {
+    final trimmed = token.trim();
+    final client = _client(trimmed);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString(folderPrefKey);
-      if (saved != null && saved.trim().isNotEmpty) return saved.trim();
-    } catch (_) {}
-    return defaultFolder();
+      await client.fetchProjects();
+    } finally {
+      client.close();
+    }
+    Config.todoistApiToken = trimmed;
+    await Config.save();
   }
 
-  Future<String> defaultFolder() async {
-    if (!kIsWeb && Platform.isWindows && await Directory(r'D:\').exists()) {
-      return r'D:\AgentDesk';
-    }
-    final docs = await getApplicationDocumentsDirectory();
-    return '${docs.path}${Platform.pathSeparator}AgentDesk';
+  static Map<String, String> _projectNames(
+          List<Map<String, dynamic>> projects) =>
+      {
+        for (final p in projects)
+          // The Inbox reads as "General": every unfiled task lands there, its
+          // name says nothing about a project.
+          if (p['is_inbox_project'] != true)
+            p['id'].toString(): p['name'] as String? ?? '',
+      };
+
+  /// The whole desk from Todoist; the local cache is updated. Throws on a
+  /// network or API failure, so the page can say so and keep what it shows.
+  Future<DeskBoard> refresh() async {
+    final (tasks, projects) = await _withClient((client) async => (
+          await client.fetchTasksWithLabel(agentDeskToken),
+          await client.fetchProjects(),
+        ));
+    final names = _projectNames(projects);
+    await _writeCache(tasks, names);
+    return DeskBoard.fromRemote(tasks, names);
   }
 
-  /// Saves the folder; an empty [path] goes back to [defaultFolder].
-  Future<void> setFolder(String path) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (path.trim().isEmpty) {
-      await prefs.remove(folderPrefKey);
-    } else {
-      await prefs.setString(folderPrefKey, path.trim());
-    }
-  }
-
-  String _join(String a, String b) => '$a${Platform.pathSeparator}$b';
-
-  /// The whole desk, or null when the folder doesn't exist yet.
-  Future<DeskSnapshot?> load() async {
-    final root = await folder();
-    final dir = Directory(root);
-    if (!await dir.exists()) return null;
-    final projects = <DeskProject>[];
-    final entries = await dir.list().toList();
-    entries.sort((a, b) => a.path.compareTo(b.path));
-    for (final entry in entries) {
-      if (entry is! Directory) continue;
-      final id = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
-      if (id.startsWith('.') || id.startsWith('_')) continue;
-      projects.add(await _loadProject(entry.path, id));
-    }
-    return DeskSnapshot(folder: root, projects: projects);
-  }
-
-  Future<DeskProject> _loadProject(String path, String id) async {
-    var name = id;
-    var goal = '';
-    final brief = await _readText(_join(path, 'brief.md'));
-    if (brief != null) {
-      final lines = const LineSplitter().convert(brief);
-      for (final line in lines) {
-        final t = line.trim();
-        if (t.startsWith('# ')) {
-          name = t.substring(2).trim();
-          break;
-        }
-      }
-      // The goal: the first paragraph under the title, joined to one line.
-      var pastTitle = false;
-      final paragraph = <String>[];
-      for (final line in lines) {
-        final t = line.trim();
-        if (!pastTitle) {
-          pastTitle = t.startsWith('# ');
-          continue;
-        }
-        if (t.startsWith('#')) break;
-        if (t.isEmpty) {
-          if (paragraph.isNotEmpty) break;
-          continue;
-        }
-        paragraph.add(t);
-      }
-      goal = paragraph.join(' ');
-    }
-
-    Map<String, dynamic> status = const {};
-    final statusText = await _readText(_join(path, 'status.json'));
-    if (statusText != null) {
-      try {
-        final decoded = jsonDecode(statusText);
-        if (decoded is Map) status = Map<String, dynamic>.from(decoded);
-      } catch (_) {}
-    }
-
-    final questions = <DeskQuestion>[
-      for (final json in await _readJsonLines(_join(path, 'questions.jsonl')))
-        DeskQuestion.fromJson(id, json),
-    ].where((q) => q.id.isNotEmpty && q.text.trim().isNotEmpty).toList();
-
-    final decisions = <DeskDecision>[];
+  /// The desk as last fetched, so opening it shows something at once. Null
+  /// when there is no cache yet (or no file system).
+  Future<DeskBoard?> loadCached() async {
     try {
-      await for (final f in Directory(path).list()) {
-        if (f is! File) continue;
-        final file = f.uri.pathSegments.last;
-        if (!file.startsWith('decisions') || !file.endsWith('.jsonl')) continue;
-        for (final json in await _readJsonLines(f.path)) {
-          decisions.add(DeskDecision.fromJson(id, json));
-        }
-      }
-    } catch (_) {}
-    decisions.sort((a, b) => a.at.compareTo(b.at));
-
-    var logTail = <String>[];
-    final log = await _readText(_join(path, 'log.md'));
-    if (log != null) {
-      final lines = const LineSplitter()
-          .convert(log)
-          .where((l) => l.trim().isNotEmpty)
-          .toList();
-      logTail = lines.sublist(max(0, lines.length - logTailLines));
-    }
-
-    final where = status['where'];
-    return DeskProject(
-      id: id,
-      name: (status['name'] as String?)?.trim().isNotEmpty == true
-          ? (status['name'] as String).trim()
-          : name,
-      goal: goal,
-      state: DeskProject.stateFrom(status['state']),
-      summary: status['summary'] as String? ?? '',
-      where: where is String ? where : '',
-      updatedAt: status['updatedAt'] is String
-          ? DateTime.tryParse(status['updatedAt'] as String)?.toLocal()
-          : null,
-      questions: questions,
-      decisions: decisions,
-      logTail: logTail,
-    );
-  }
-
-  Future<String?> _readText(String path) async {
-    try {
-      final file = File(path);
+      final file = await _cacheFile();
       if (!await file.exists()) return null;
-      return await file.readAsString();
+      final json = jsonDecode(await file.readAsString());
+      if (json is! Map) return null;
+      return DeskBoard.fromRemote(
+        (json['tasks'] as List? ?? const [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList(),
+        Map<String, String>.from(json['projects'] as Map? ?? const {}),
+      );
     } catch (_) {
       return null;
     }
   }
 
-  Future<List<Map<String, dynamic>>> _readJsonLines(String path) async {
-    final text = await _readText(path);
-    if (text == null) return const [];
-    final out = <Map<String, dynamic>>[];
-    for (final line in const LineSplitter().convert(text)) {
-      if (line.trim().isEmpty) continue;
-      try {
-        final decoded = jsonDecode(line);
-        if (decoded is Map) out.add(Map<String, dynamic>.from(decoded));
-      } catch (_) {}
+  Future<void> _writeCache(
+      List<Map<String, dynamic>> tasks, Map<String, String> names) async {
+    try {
+      final file = await _cacheFile();
+      await file.writeAsString(jsonEncode({'tasks': tasks, 'projects': names}),
+          flush: true);
+    } catch (_) {
+      // Only a head start for the next launch; the desk works without it.
     }
-    return out;
   }
 
-  /// Appends a decision to this device's decisions file in [projectId].
-  /// [questionId] answers that question; without it the text is a free
-  /// instruction to the project's agent (optionally about [topic]).
-  Future<DeskDecision> decide({
-    required String projectId,
-    required String text,
-    String? questionId,
-    String topic = '',
-    String via = 'text',
-  }) async {
-    final now = _clock();
-    final decision = DeskDecision(
-      id: 'd-${now.toUtc().millisecondsSinceEpoch}-$device',
-      projectId: projectId,
-      at: now,
-      questionId: questionId,
-      topic: topic,
-      text: text.trim(),
-      via: via,
-      device: device,
+  Future<File> _cacheFile() async {
+    final docs = await getApplicationDocumentsDirectory();
+    return File('${docs.path}${Platform.pathSeparator}$cacheFileName');
+  }
+
+  /// A task's comments, oldest first: notes, files and earlier answers.
+  Future<List<DeskComment>> comments(DeskItem item) => _withClient((c) async => [
+        for (final json in await c.fetchComments(item.id))
+          DeskComment.fromJson(json),
+      ]);
+
+  /// Answers [item]: the comment first, because it's what the agent acts on;
+  /// the label then takes the item out of the queue on every device.
+  Future<void> answer(DeskItem item, String text) => _withClient((c) async {
+        await c.addComment(item.id, '${DeskComment.answerPrefix} ${text.trim()}');
+        await c.updateTaskLabels(
+          item.id,
+          {...item.labels, agentDeskAnsweredToken}.toList(),
+        );
+      });
+
+  /// Tells [project]'s agent what to do next.
+  Future<void> instruct(String project, String text) =>
+      _createAll([_Draft(project, text.trim(), '', const [agentDeskInstructionToken])]);
+
+  /// Closes [item] on Todoist.
+  Future<void> close(DeskItem item) =>
+      _withClient((c) => c.closeTask(item.id));
+
+  /// Creates the five starter projects with their status items and the
+  /// questions already known. Only offered while the desk is empty.
+  Future<void> seed() => _createAll(_starterDrafts);
+
+  Future<void> _createAll(List<_Draft> drafts) => _withClient((c) async {
+        final projects = await c.fetchProjects();
+        final ids = {
+          for (final p in projects)
+            if (p['is_inbox_project'] != true)
+              (p['name'] as String? ?? '').toLowerCase(): p['id'].toString(),
+        };
+        for (final draft in drafts) {
+          String? projectId;
+          if (draft.project != deskGeneralProject) {
+            final key = draft.project.toLowerCase();
+            projectId = ids[key];
+            if (projectId == null) {
+              final created = await c.createProject(draft.project);
+              projectId = created['id'].toString();
+              ids[key] = projectId;
+            }
+          }
+          await c.createTask(
+            content: draft.title,
+            description: draft.description,
+            projectId: projectId,
+            labels: [agentDeskToken, ...draft.labels],
+          );
+        }
+      });
+
+  /// Headers to load an attachment with. The token only ever goes to Todoist.
+  Map<String, String> headersFor(String url) {
+    final uri = Uri.tryParse(url);
+    final host = uri?.host.toLowerCase() ?? '';
+    final isTodoist = uri?.scheme == 'https' &&
+        (host == 'todoist.com' || host.endsWith('.todoist.com'));
+    return isTodoist ? {'Authorization': 'Bearer $_token'} : const {};
+  }
+
+  /// [item] on the Todoist website.
+  static String todoistUrl(DeskItem item) =>
+      'https://app.todoist.com/app/task/${item.id}';
+}
+
+class _Draft {
+  final String project;
+  final String title;
+  final String description;
+  final List<String> labels;
+  const _Draft(this.project, this.title, this.description, this.labels);
+}
+
+_Draft _status(String project, String summary, String where, String brief) =>
+    _Draft(project, summary, '[State: idle]\n[Where: $where]\n\n$brief',
+        const [agentDeskStatusToken]);
+
+_Draft _question(
+  String project,
+  String text, {
+  required String topic,
+  String priority = 'normal',
+  List<String> options = const [],
+}) =>
+    _Draft(
+      project,
+      text,
+      [
+        '[Topic: $topic]',
+        '[Priority: $priority]',
+        for (final o in options) '[Option: $o]',
+      ].join('\n'),
+      const [],
     );
-    final root = await folder();
-    final dir = Directory(_join(root, projectId));
-    await dir.create(recursive: true);
-    final file = File(_join(dir.path, 'decisions-$device.jsonl'));
-    await file.writeAsString('${jsonEncode(decision.toJson())}\n',
-        mode: FileMode.append, flush: true);
-    return decision;
-  }
 
-  /// Creates the desk folder with the five starter projects and the
-  /// questions already known (the parked ones as `later`). Never overwrites
-  /// a file that exists.
-  Future<void> seed() async {
-    final root = await folder();
-    await Directory(root).create(recursive: true);
-    await _writeIfMissing(_join(root, 'README.md'), _readme);
-    final now = _clock().toUtc().toIso8601String();
-    for (final p in _starterProjects) {
-      final dir = _join(root, p.id);
-      await Directory(dir).create(recursive: true);
-      await _writeIfMissing(_join(dir, 'brief.md'), p.brief);
-      await _writeIfMissing(
-          _join(dir, 'status.json'),
-          const JsonEncoder.withIndent('  ').convert({
-            'state': 'idle',
-            'summary': p.summary,
-            'where': p.where,
-            'updatedAt': now,
-          }));
-      await _writeIfMissing(
-          _join(dir, 'questions.jsonl'),
-          p.questions
-              .map((q) => '${jsonEncode({...q, 'at': now})}\n')
-              .join());
-      await _writeIfMissing(_join(dir, 'log.md'),
-          '# Log\n\n- ${now.substring(0, 10)}: desk set up, no agent yet.\n');
-    }
-  }
-
-  Future<void> _writeIfMissing(String path, String content) async {
-    final file = File(path);
-    if (await file.exists()) return;
-    await file.writeAsString(content, flush: true);
-  }
-}
-
-class _Starter {
-  final String id;
-  final String brief;
-  final String summary;
-  final String where;
-  final List<Map<String, Object>> questions;
-  const _Starter(this.id, this.brief, this.summary, this.where, this.questions);
-}
-
-const String _readme = '''# Agent Desk
-
-One folder per project. Who writes what:
-
-| File | Written by |
-|---|---|
-| `brief.md` | you: `# Name`, the goal, the rules, what the agent may never do alone |
-| `status.json` | the agent: `{"state": "working|waiting|idle|error", "summary", "where", "updatedAt"}` |
-| `questions.jsonl` | the agent: `{"id", "at", "topic", "text", "options": [], "priority": "blocking|normal|later", "deadline"}` |
-| `decisions-<device>.jsonl` | BestToDo on that device: `{"id", "at", "questionId", "topic", "text", "via", "device"}` |
-| `log.md` | the agent |
-
-A question is answered once a decision names its id. One writer per file, so
-two PCs can sync this folder with git without conflicts.
-''';
-
-const List<_Starter> _starterProjects = [
-  _Starter(
-    '1-3d-builder',
-    '''# 3D builder
-
+final List<_Draft> _starterDrafts = [
+  _status('3D builder', 'Milestone (a): text to printed part. Not started.',
+      'both', '''
 From a photo and a sentence ("duplicate this, with a hole in the middle") to a
 finished object on the Bambu Lab P2S, with the vent handled.
 
 ## Rules
 - Never alone: start a print, change the printer's network mode, push to main.
-- Code work runs in the cloud (Best3DBuilder repo); printer work on the Beast.
-''',
-    'Milestone (a): text to printed part. Not started.',
-    'both',
-    [
-      {
-        'id': 'p2s-lan-mode',
-        'topic': 'Printer',
-        'text':
-            'Switch the P2S to LAN only + Developer mode, so the Beast can start prints? Bambu cloud and Handy remote access stop working then.',
-        'options': ['Yes, switch it', 'Not yet'],
-        'priority': 'normal',
-      },
-    ],
+- Code work runs in the cloud (Best3DBuilder repo); printer work on the Beast.'''),
+  _question(
+    '3D builder',
+    'Switch the P2S to LAN only + Developer mode, so the Beast can start prints? Bambu cloud and Handy remote access stop working then.',
+    topic: 'Printer',
+    options: const ['Yes, switch it', 'Not yet'],
   ),
-  _Starter(
-    '2-photos',
-    '''# Photos and videos
-
-Bring all photos and videos into Immich on the Beast, keep only the useful
-ones (at most 700 GB), and add the stories from photo evenings to them.
+  _status('Photos and videos', 'Batch 1 not started. Immich runs.', 'beast', '''
+Bring all photos and videos into Immich on the Beast, keep only the useful ones
+(at most 700 GB), and add the stories from photo evenings to them.
 
 ## Rules
 - Never alone: delete anything, from any source.
-- Plan: laptop-builder `beast/photos/README.md`.
-''',
-    'Batch 1 not started. Immich runs.',
-    'beast',
-    [
-      {
-        'id': 'videos-compress',
-        'topic': 'Clean-up',
-        'text':
-            'Videos: re-compress large ones to HEVC on the GPU (often half the size), or only delete the ones you pick?',
-        'options': ['Re-compress', 'Delete only'],
-        'priority': 'normal',
-      },
-      {
-        'id': 'kids-thinned',
-        'topic': 'Clean-up',
-        'text':
-            'Which people get thinned, and who is on the keep list? Name them in Immich (Explore > People) first.',
-        'priority': 'normal',
-      },
-      {
-        'id': 'external-drive',
-        'topic': 'Sources',
-        'text':
-            'Plug in the external hard drive and say its drive letter, so batch 1 can be scanned.',
-        'priority': 'normal',
-      },
-    ],
+- Plan: laptop-builder `beast/photos/README.md`.'''),
+  _question(
+    'Photos and videos',
+    'Videos: re-compress large ones to HEVC on the GPU (often half the size), or only delete the ones you pick?',
+    topic: 'Clean-up',
+    options: const ['Re-compress', 'Delete only'],
   ),
-  _Starter(
-    '3-network',
-    '''# Network and devices
-
+  _question(
+    'Photos and videos',
+    'Which people get thinned, and who is on the keep list? Name them in Immich (Explore > People) first.',
+    topic: 'Clean-up',
+  ),
+  _question(
+    'Photos and videos',
+    'Plug in the external hard drive and say its drive letter, so batch 1 can be scanned.',
+    topic: 'Sources',
+  ),
+  _status('Network and devices',
+      'Plan ready. All smart devices are still on my_stuffs.', 'beast', '''
 Move everything onto UniFi, split into Home, Servers, IoT, Cameras, Printer and
 Guest networks, and watch what the devices send out.
 
 ## Rules
 - Never alone: any router, firewall or Wi-Fi change.
-- Plans: laptop-builder `minipc/WIFI-REBUILD.md`, `home-assistant/docs/IOT_SECURITY.md`.
-''',
-    'Plan ready. All smart devices are still on my_stuffs.',
-    'beast',
-    [
-      {
-        'id': 'unifi-model',
-        'topic': 'UniFi',
-        'text':
-            'Which UniFi router do you have, and is there a UniFi switch or access point? Port mirroring depends on it.',
-        'priority': 'later',
-      },
-    ],
+- Plans: laptop-builder `minipc/WIFI-REBUILD.md`, `home-assistant/docs/IOT_SECURITY.md`.'''),
+  _question(
+    'Network and devices',
+    'Which UniFi router do you have, and is there a UniFi switch or access point? Port mirroring depends on it.',
+    topic: 'UniFi',
+    priority: 'later',
   ),
-  _Starter(
-    '4-vault',
-    '''# Sensitive documents
-
+  _status('Sensitive documents',
+      'Vault: the password manager, if it can hold files.', 'beast', '''
 Passport scans and the like, in an encrypted vault with off-site copies. The
 agents set it up but never see inside it.
 
 ## Rules
-- Never: the password manager's login, a session in it, or its export file.
-''',
-    'Vault: the password manager, if it can hold files.',
-    'beast',
-    [
-      {
-        'id': 'pm-files',
-        'topic': 'Vault',
-        'text':
-            'Can your password manager store files? Yes or no is enough.',
-        'options': ['Yes', 'No'],
-        'priority': 'later',
-      },
-    ],
+- Never: the password manager's login, a session in it, or its export file.'''),
+  _question(
+    'Sensitive documents',
+    'Can your password manager store files? Yes or no is enough.',
+    topic: 'Vault',
+    priority: 'later',
+    options: const ['Yes', 'No'],
   ),
-  _Starter(
-    '5-deals',
-    '''# Deals
-
+  _status('Deals', 'Parked until the desk works.', 'cloud', '''
 Flights, things you use up, network hardware, second-hand solar and a battery,
 an apartment to rent: find good prices so the setup pays for itself.
 
 ## Rules
-- It advises, you buy. Never pay, book, bid or message a seller alone.
-''',
-    'Parked until the desk works.',
-    'cloud',
-    [
-      {
-        'id': 'deals-flights',
-        'topic': 'Flights',
-        'text': 'Which airport(s) do you fly from, and which trips do you have in mind?',
-        'priority': 'later',
-      },
-      {
-        'id': 'deals-first',
-        'topic': 'Shopping',
-        'text': 'What should it watch first?',
-        'priority': 'later',
-      },
-      {
-        'id': 'deals-apartment',
-        'topic': 'Apartment',
-        'text':
-            'The apartment: to live in or to rent out as an investment? Where, and the budget?',
-        'priority': 'later',
-      },
-      {
-        'id': 'deals-gmail',
-        'topic': 'Shopping',
-        'text':
-            'May the deals agent read order confirmations in Gmail to learn what you buy and what you paid?',
-        'options': ['Yes', 'No, I keep the list'],
-        'priority': 'later',
-      },
-    ],
+- It advises, you buy. Never pay, book, bid or message a seller alone.'''),
+  _question(
+    'Deals',
+    'Which airport(s) do you fly from, and which trips do you have in mind?',
+    topic: 'Flights',
+    priority: 'later',
+  ),
+  _question('Deals', 'What should it watch first?',
+      topic: 'Shopping', priority: 'later'),
+  _question(
+    'Deals',
+    'The apartment: to live in or to rent out as an investment? Where, and the budget?',
+    topic: 'Apartment',
+    priority: 'later',
+  ),
+  _question(
+    'Deals',
+    'May the deals agent read order confirmations in Gmail to learn what you buy and what you paid?',
+    topic: 'Shopping',
+    priority: 'later',
+    options: const ['Yes', 'No, I keep the list'],
   ),
 ];

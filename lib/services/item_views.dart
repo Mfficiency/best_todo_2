@@ -58,6 +58,7 @@ class ItemViews {
       !task.isEatingHabit &&
       !task.isResearch &&
       !task.isGrocery &&
+      !hasAgentDeskToken(task.label) &&
       (includeWorklistItems || !hasWorklistToken(task.label)) &&
       (includeWorklistItems ||
           includeLemmonItems ||
@@ -413,6 +414,8 @@ class ItemViews {
           .where((t) =>
               t.deletedAt == null &&
               !isApproved(t) &&
+              // Stamped by a build from before the desk moved to Todoist.
+              !hasAgentDeskToken(t.label) &&
               passesFilterRules(t, rules))
           .toList();
 }
