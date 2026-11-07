@@ -272,7 +272,7 @@ Everything use `export_version: 1` (two version namespaces — intentional). Imp
 auto-detects: bare JSON list = legacy tasks; map with `tasks_bundle` = everything; map with
 only `settings` = settings; else tasks bundle.
 
-**Automatic backup (0.1.130):** Settings → Backup schedules the Everything export
+**Automatic backup (0.1.130):** Settings → Backup & data schedules the Everything export
 (`AutoBackupService`, `lib/services/auto_backup_service.dart`): frequency off/daily/weekly
 (`Config.autoBackupFrequency`, default off) into a user-picked folder
 (`Config.autoBackupDirectory`), checked after the home page loads and on every app resume
@@ -1118,6 +1118,19 @@ token (0.2.31) so it stays filterable via Settings → Filtering rules; see §4.
 tag" note.
 
 ### 4.4 Settings (all persisted in `settings.json` via `Config`)
+
+**Section order and frame (0.2.118, the layout shared by every Mfficiency app, Vesta Immo's
+Settings page):** Appearance, Mode & features, Filtering rules, Notifications, Tasks, Streak,
+Dice timer, SMS report, Widget, Todoist sync, Sync & export, Weekly Hours Planner, Wishlist
+build, Claude Routine, **Updates** (second to last) and **Backup & data** (last; it was
+"Backup"). The order of `_sectionTitles` is the page order: section indexes, the search
+registry, the visibility switch, the chip row and the scroll tracking all go by it, so a new
+section is inserted before Updates and the indexes after it shift. Cards have a 4 px gap
+(`margin: bottom 4`), end with `SizedBox(height: 8)` when open, the pinned chip header is 64
+high (padding 12/10), the content is centred at most 820 wide (`_contentMaxWidth`, through
+the `SliverPadding`'s side padding so the list stays lazy) and ends with `SizedBox(height:
+200)` so the last section can scroll to the top. `settings_collapse_test.dart` checks the
+order.
 
 Appearance: dark mode, minimalist mode (0.1.101, default off: swaps both themes for a
 monochrome ink-on-paper `buildMinimalistTheme(brightness)` in `main.dart` — pure greys
@@ -2126,6 +2139,77 @@ logic. The Food Diary mock falls back to two in-memory (never saved) demo entrie
 Food Diary tasks exist yet, the same way `FoodDiaryPage` seeds its own copy on first open.
 The button-widget mock shares the same red/black logic as the full widget's mock, just
 without any status text, matching what the Kotlin provider actually draws.
+
+### 8.1 Wear OS companion (`wear/`, 0.2.116)
+
+BestToDo Watch: a Kotlin + Compose for Wear OS app in `wear/` (its own Gradle build, AGP
+8.9.1 / Kotlin 2.1.0 / Gradle 8.12 like the phone; **not** included in
+`android/settings.gradle.kts`, so `flutter build apk` never sees it). Same `applicationId`
+(`com.mfficiency.best_todo_2`) and same signing key as the phone (the Data Layer pairs only
+those), `namespace`/Kotlin package `com.mfficiency.best_todo_2.wear`, minSdk 30, targetSdk 34,
+`standalone=false`. Full design, build/install/test: `wear/README.md`.
+Launcher icon (0.2.122): `@mipmap/ic_launcher` (also `roundIcon`), BestToDo's own logo on
+a white disc, at 74 % so the watch's circular crop never clips it; generated from
+`web/icons/Icon-512.png` by `tool/update_app_logo.py` (`watch_icons`) with the phone's icons.
+The phone's notifications (alarms/reminders, also mirrored to the watch) use
+`@drawable/ic_stat_notification`, the logo as a white glyph on transparent
+(`notification_icons`); the launcher PNG is opaque, so as a small icon it drew a blank square.
+
+- **Screens:** main list = status line ("Phone connected" / "Phone not reachable · saved
+  hh:mm" / "Update BestToDo on your phone" / "Looking for your phone…"), **Today** (exactly
+  `TaskWidgetService.todayTasks`: the task widget's list, so every gate of §8's task widget
+  holds — deleted, waiting for approval, Food Diary/Research, the Worklist-only `mlr` tag,
+  the Home filtering rules), an **Alarms** chip (next ring) → read-only alarm screen,
+  **Tomorrow** (`TaskWidgetService.tomorrowTasks`, the same gates, due exactly tomorrow),
+  Refresh. Max 40 rows per list (`WearSyncService.maxRows`, `+N more on the phone`).
+  A task completes on a second tap within 4 s (no undo on the watch). No task creation,
+  no un-completing, no alarm editing in v1.
+- **Phone → watch:** `TaskWidgetService.sync` / `AlarmWidgetService.sync` end with
+  `WearSyncService.publishTasks` / `publishAlarms` (`lib/services/wear_sync_service.dart`):
+  JSON (`tasksPayload`: `{v, day, today[{id,title,done}], todayMore, tomorrow[…],
+  tomorrowMore}`; `alarmsPayload`: `{v, alarms[{id,time,name,sub,on,next}]}` soonest ring
+  first, off last) → method channel `besttodo/wear` `publish` (`MainActivity.kt`) →
+  `WearSync.publish` = `putDataItem` at `/todo/today` / `/todo/alarms` with `json` + `at`,
+  urgent. Android only, fire and forget, errors swallowed, an unchanged JSON is not re-sent
+  (per isolate; a failed send is retried on the next sync). The background isolate has no
+  such channel, so a widget-checkbox completion reaches the watch on the next in-app sync.
+  Capability `todo_phone` (`res/values/wear.xml`, `tools:keep`); dependency
+  `play-services-wearable:18.2.0` (phones without Play services: the Task just fails).
+- **Watch → phone:** message `/todo/command/complete` (task uid, UTF-8) →
+  `WearCommandService.kt` (`WearableListenerService`, `MESSAGE_RECEIVED`, `wear://*/todo/…`)
+  → `WearSync.enqueue` (`{"action":"complete","id","at"}` in its own SharedPreferences file
+  `best_todo_wear`, max 100) — **never** a tasks.json write from Kotlin. Then: engine
+  attached (`WearSync.channel`, set in `configureFlutterEngine`, cleared in
+  `cleanUpFlutterEngine`) → `wearCommandsPending` poke; else → the task widget's background
+  path `besttodotask://complete?id=` (`alarmWidgetBackgroundCallback` →
+  `TaskWidgetService.completeInStorage`: like `toggleInStorage` but complete-only, incl.
+  streak + widget re-sync). The primary home page (not Worklist) drains the queue
+  (`takeCommands`, pull-with-clear like the share channel) after `_loadTasks`, on every
+  resume (after `_reloadTasksFromStorage`/`_mergeWidgetCompletions`) and on the poke:
+  `_applyWearCommands` → `WearSyncService.completionsFor` (each existing, not deleted, still
+  open task once; done/unknown ignored, so the background path + the queued copy never
+  double-complete) → `isDone`/`completedAt` (= when the phone got it), `_trackTaskDoneState`,
+  `_recordStreakToggle`, one `_saveTasks` (history/undo, Todoist, widget → republish).
+  Recurring occurrences are plain tasks, so nothing else is needed for them.
+- **Watch side:** reads items on start, `DataClient` listener + a 30 s connection check only
+  while the activity is STARTED; caches the last JSON per path; "done" taps the phone has
+  not confirmed stay shown as done (`core/Pending`: settled by a newer `/todo/today` item,
+  undelivered ones resent on refresh, dropped after 24 h). Pure logic in `wear/app/src/
+  main/kotlin/…/core` (no Android imports), JUnit tests in `wear/app/src/test`.
+- **Release:** `tool\build.ps1 release` builds it after the phone APK (and, with PUBLISH=1,
+  after the phone release), see §11 "Laptop channel builds" › Watch.
+- **Self-update (0.2.120):** the watch installs its own new builds from this repo's
+  `wear-v…` releases (`update/WatchUpdater.kt`, `update/UpdateWorker.kt`, pure picking in
+  `core/WatchUpdate.kt`; ported from flutter_app_template). WorkManager once a day while
+  charging + online, on app open when the last check is >24 h old, and the **Check for
+  updates** chip + one status line at the bottom of the main list. Picks the highest build
+  above the running versionCode from the asset name `BestToDo-Watch-<x.y.z>-<build>[-channel].apk`
+  (any channel; equal builds prefer main), downloads via the GitHub asset API into
+  `cache/updates/`, checks package + versionCode, installs with a PackageInstaller session
+  (`USER_ACTION_NOT_REQUIRED`, `UPDATE_PACKAGES_WITHOUT_USER_ACTION`). Repo/prerelease switch
+  in `wear/app/src/main/res/values/updates.xml` (hand-written). Once per watch:
+  `appops set com.mfficiency.best_todo_2 REQUEST_INSTALL_PACKAGES allow` over adb. The repo
+  is public, so no token; a DUMP-guarded `TokenReceiver` still accepts one over adb.
 
 ## 9. Android platform config
 
@@ -3146,11 +3230,16 @@ Tools → **PC Watcher** (feature/start-tool key `pc_watcher`, `Icons.computer`;
   with `Accept: application/vnd.github.raw+json`; plus `actions/runs` → runs not completed
   = jobs waiting/running on the runner (hidden with a note when the token can't read Actions).
   401/403/404 map to readable errors (`PcWatcherException`).
-- **Page:** machine card (green Online if checked ≤ 20 min ago, orange Quiet < 3 h, grey
-  Offline; "Building X (branch) since …"), last-7-days stats (published, failed, average
-  published build time, total PC busy time), **Pending** (channels with `isPending` = state
-  not idle or a `lastError`, plus runner jobs), **Build log** (newest 200 after filtering;
-  chips All / Published / Failed / Already published + one per app). A row shows result icon,
+- **Page** (top to bottom, 0.2.115): machine card (green Online if checked ≤ 20 min ago,
+  orange Quiet < 3 h, grey Offline; "Building X (branch) since …"), **Pending** (channels
+  with `isPending` = state not idle or a `lastError`, plus runner jobs), **Build log**
+  (newest 200 after filtering). The log's chips — Built (default: every run except
+  `unchanged`, i.e. hides "already published, nothing built") / Published / Failed /
+  Already published / All, + one per app — are folded away behind the header's "Filters"
+  toggle (`pc-watcher-filters-toggle`), which reads "Filters: <active>" while a non-default
+  filter or an app is picked. At the bottom a **Stats** row opens `_PcWatcherStatsPage`
+  ("PC Watcher stats": last-7-days published, failed, average published build time, total
+  PC busy time). A row shows result icon,
   "<app> <version> · <branch>", start, duration, APK size, the error for failures; tapping
   opens a sheet with all fields and the output tail (Copy output). Pull down or Refresh
   re-downloads; the key action edits/removes the token (`_TokenDialog` owns its controller).
@@ -3324,12 +3413,22 @@ in App Logs → Todoist — onboarding has already finished by then.
     workflow artifacts, no releases, no commit-backs.
   - **App side (since 0.2.107 / Best Music 0.3.27): the shared updates package** — see
     "Shared updates package" right below. Its `ReleaseFilter` reads `releases?per_page=30`
-    (anonymous: the repo is public, no token) and keeps the app's own tags (`v` vs
+    (anonymous: the repo is public; with the optional token below, authenticated) and keeps the app's own tags (`v` vs
     `music-v`, the tag prefix) of **all** channels (main, staging and dev; prereleases
     count, drafts never), highest build number first; the highest one is offered when it is
     above the installed versionCode (the same rule Android applies), whatever its x.y.z or
     channel. So the phone always ends up on the newest built commit of any branch. The
     updater never reads `github_releases/`.
+  - **Optional GitHub token (0.2.121, package 1.6.3):** Settings → Updates → "GitHub token
+    (optional)" ("Only needed if this app's repo is private") pastes, replaces or removes a
+    read-only token (fine-grained, `Mfficiency/best_todo_2` only, Contents: read). It lives in
+    `flutter_secure_storage` (key `updates.github_token`, Android Keystore-encrypted, never in
+    SharedPreferences/settings.json/the full backup/the log); `AppUpdates.readToken` is the
+    package's `tokenProvider`, `AppUpdates.saveToken` stores/removes it and calls the
+    controller's `reloadToken()` (checks at once). `privateRepo` stays **false**: without a
+    token everything is anonymous exactly as before; with one, checks send it and (package
+    1.6.3) the APK downloads through the asset API, so updates keep working if the repo is
+    made private later. The row shows only "Saved on this phone (••••••••)", never the value.
   - **Shared updates package (0.2.107 / Best Music 0.3.27; the same code as Hally Remote,
     BestCollage, Vesta Immo and the template):** `packages/mfficiency_updates` is a Flutter
     plugin (Dart controller + widgets, Android installer) **vendored** from
@@ -3367,9 +3466,26 @@ in App Logs → Todoist — onboarding has already finished by then.
       moment it turns true. Best Music has no gate. Turning "Automatically update" on or off
       calls the controller's `autoCheckChanged()` (the package's: on, polling starts and a
       due check runs now; off, polling stops).
-    - BestToDo's `beforeInstall` (the package hook) is `PreUpdateBackup.ensure()` (the
-      snapshot of every data file, §4.2f), right before the plugin's `installApk`; a
-      failure is logged and the install goes on.
+    - BestToDo's `beforeInstall` (the package hook) is the package's **full backup**
+      (`FullBackup.beforeUpdate`, since 0.2.117), right before the plugin's `installApk`; a
+      failure is logged and the install goes on. `AppUpdates.backup` is built by
+      `AppUpdates.createBackup` as the first step of `main()` (before anything writes
+      SharedPreferences, so a new install is recognised) with `appName: 'BestToDo'` and
+      `excluded: {'pre_update_backup'}`. Each backup is one
+      `Download/BestToDo/Backups/BestToDo-<date>-<x.y.z>+<build>.tar.gz` (MediaStore, kept
+      when the app is uninstalled, newest 10 kept) holding every file in the documents
+      (`app_flutter`: tasks.json, alarms, projects, labels, wishlist, deleted items,
+      item_events.jsonl, attachments/, settings.json incl. its tokens, logs …), support
+      (`files`) and app-specific external folders, plus FlutterSharedPreferences. Not in
+      it: user-chosen folders (sync folder, automatic-backup folder, the shared wishlist
+      file in `BestToDo/` on shared storage; the user's own files), caches, and the native
+      SharedPreferences of home_widget / flutter_local_notifications / the Wear command
+      queue (rebuilt from the data). Settings → Backup & data starts with `FullBackupTiles`
+      ("Back up everything", "Restore from a backup"); after the first frame a new install
+      is offered a restore once (`offerRestore`, `_startUpdates`). Restore checks the
+      applicationId, backs up the current data first, replaces it all and restarts.
+      Android only. `PreUpdateBackup` (§4.2f) still runs before a new version's first
+      write.
     - **Behaviour (the package's):** checks on the first frame when the last check is 15+
       minutes old, every 15 minutes while in the foreground, **when the app comes back to
       the foreground** and the last check is 15+ minutes old, when the switch is turned on,
@@ -3387,7 +3503,7 @@ in App Logs → Todoist — onboarding has already finished by then.
       install starts when the app is back. Cancelled: a slim `UpdateBanner` ("Update ready ·
       0.2.107 (3600000)" with Install) until installed; a failed download: "… couldn't be
       downloaded" with Try again (silent again). GitHub's rate limit (429, a 403 with
-      `x-ratelimit-remaining: 0` / `retry-after`, or any 403 — the app sends no token):
+      `x-ratelimit-remaining: 0` / `retry-after`, or any 403 without a token):
       status "GitHub is limiting update checks right now — try again later.", and the
       automatic checks pause until the reset GitHub names (else 30 minutes), also across a
       restart (`state.updates.pausedUntil`); taps still check.
@@ -3657,6 +3773,21 @@ in App Logs → Todoist — onboarding has already finished by then.
     once a PR into `dev` merges, deletes its head branch via `actions/github-script`
     (`git.deleteRef`), skipping `dev`/`staging`/`main` themselves and tolerating a branch
     already gone (422/404, e.g. deleted by a squash-merge UI option).
+- **Watch (Wear OS companion, 0.2.116, §8.1):** `build.ps1 release`'s `Invoke-WearRelease`,
+  after the phone loop, for each phone build that did not fail (`WEAR=0` skips): writes
+  `wear\local.properties` from `android\local.properties`' `sdk.dir`, sets `JAVA_HOME` to
+  Android Studio's `jbr` if unset, runs `.\wear\gradlew.bat -p wear assembleRelease
+  -PbuildNumber=<build> -PversionName=<x.y.z> --no-daemon` with `REQUIRE_RELEASE_KEY=1`
+  (wear/app/build.gradle.kts reads `android/key.properties`, `storeFile` relative to
+  `android/app`), copies the APK to `build\wear\BestToDo-Watch-<x.y.z>-<build>[-channel].apk`
+  (never committed, never in `github_releases/`) and, with PUBLISH=1, publishes a separate
+  release `wear-v<x.y.z>-<build>[-channel]` with `gh release create` (`--latest=false`,
+  prerelease off main, same target sha, notes linking the phone release; an existing tag
+  gets its asset replaced). The whole step is in try/catch → `Write-Warning`; it prints
+  `WEAR_BUILD_RESULT …` and leaves the phone's exit code and `LAPTOP_BUILD_RESULT` alone.
+  `wear-…` tags never match the updater's `v` prefix (`matchesTagPrefix`: prefix then a
+  digit) nor `Find-ReleaseWithSameCode`'s `^v\d+…` pattern. `wear/` is tracked source, so a
+  watch-only change still counts for the fingerprint (it is a new release).
 - **Branch model:** feature branches (historically `codex/*`, later `claude/*`) → `dev` →
   `staging` → `main`. Releases are built from dev after a version bump. A feature branch's
   PR into `dev` has its branch auto-deleted on merge (`delete-merged-branch.yml` above).

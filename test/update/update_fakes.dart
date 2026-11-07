@@ -6,9 +6,9 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:besttodo/services/app_updates.dart';
-import 'package:besttodo/services/pre_update_backup.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -111,6 +111,8 @@ class FakeInstaller {
           'canInstallApks' => true,
           'installTime' => installTime?.millisecondsSinceEpoch,
           'openUrl' => true,
+          'appId' => 'com.example.best_todo_2',
+          'saveToDownloads' => _save(call.arguments as Map),
           _ => null,
         };
       },
@@ -118,7 +120,17 @@ class FakeInstaller {
   }
 
   final calls = <MethodCall>[];
+
+  /// Files handed to `saveToDownloads` (full backups), by
+  /// "Download/<folder>/<name>", read when they were handed over.
+  final downloads = <String, List<int>>{};
   String installOutcome = 'ok';
+
+  String _save(Map args) {
+    final where = 'Download/${args['folder']}/${args['name']}';
+    downloads[where] = File(args['path'] as String).readAsBytesSync();
+    return where;
+  }
   DateTime? installTime;
 
   /// The APK paths handed to Android's installer, in order.
@@ -135,8 +147,8 @@ class FakeInstaller {
 
 /// A controller for [app] the way `AppUpdates.create` builds it
 /// ([AppUpdates.controllerFor]), on the fakes; also set as the running
-/// app's [AppUpdates.controller]. BestToDo's pre-update backup before an
-/// install is skipped (no disk) unless [backup] is set.
+/// app's [AppUpdates.controller]. The full backup before an install only
+/// runs with a [backup] (no disk otherwise).
 UpdateController fakeController({
   UpdatesApp app = UpdatesApp.todo,
   required FakeGithub github,
@@ -145,9 +157,8 @@ UpdateController fakeController({
   String version = '0.2.106',
   int build = 1000,
   DateTime Function()? clock,
-  bool backup = false,
+  FullBackup? backup,
 }) {
-  if (!backup) PreUpdateBackup.skipForTest();
   final c = AppUpdates.controllerFor(
     app,
     version: version,
@@ -157,6 +168,7 @@ UpdateController fakeController({
     downloader: downloader,
     platform: UpdatePlatform(supported: true),
     clock: clock,
+    backup: backup,
   );
   AppUpdates.controller = c;
   return c;

@@ -150,7 +150,7 @@ void main() {
       'Dice timer',
       'SMS report',
       'Sync & export',
-      'Backup',
+      'Backup & data',
       'Todoist sync',
       'Updates',
       'Filtering rules',

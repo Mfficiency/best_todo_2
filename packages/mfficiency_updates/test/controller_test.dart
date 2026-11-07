@@ -218,6 +218,17 @@ void main() {
       expect(c.ready.value, '99.0.0+100');
     });
 
+    test('a public repo with a token downloads through the asset API too',
+        () async {
+      final c = await controller(token: 't');
+      expect(c.configured, isTrue);
+      final r = await c.check();
+      expect(r.url,
+          startsWith('https://api.github.com/repos/o/app/releases/assets/'));
+      await settle();
+      expect(downloader.signed.single.$2, 't');
+    });
+
     test('a refused token (401/403/404) = badToken', () async {
       for (final status in [401, 403, 404]) {
         http.status = status;

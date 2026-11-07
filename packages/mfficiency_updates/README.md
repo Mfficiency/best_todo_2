@@ -64,6 +64,46 @@ Android installer (other platforms: checks only, no install).
   app's opener (`UpdatePlatform(openUrl: …)`): a private asset's signed
   link, else its github.com link.
 
+## Full backup (before every update, and before a reinstall)
+
+`FullBackup` puts **everything the app keeps on the phone** into one file in
+the public Downloads folder, `Download/<appName>/Backups/<App>-<date>-<x.y.z>+<build>.tar.gz`,
+which **stays when the app is uninstalled** (MediaStore on Android 10+, no
+permission; Android 9 and older: the storage permission, `maxSdkVersion 28`).
+
+- **In it:** every file in the app's documents (`app_flutter`), support
+  (`files`) and app-specific external folders, its SharedPreferences
+  (typed), and the app's `extras` (data kept elsewhere, e.g.
+  `SharedPreferencesAsync`, as JSON). A plain gzip'd tar with
+  `manifest.json` (app, applicationId, version, build, time, reason):
+  `tar -xzf` opens it on a PC.
+- **Not in it:** secrets kept natively (Android Keystore, secure storage),
+  caches, `excluded` paths, `excludedPrefixes` keys, the update state.
+- **When:** `beforeInstall: backup.beforeUpdate` makes one before every
+  update; "Back up everything" in Settings (`FullBackupTiles`) any time.
+  The newest `keep` (10) of this install's files are kept.
+- **Restore:** "Restore from a backup" (or the one-time offer on a new
+  install, `offerRestore`) picks a file with Android's picker, checks it is
+  this app's (applicationId), backs up the current data first, replaces
+  the folders and preferences, restores the extras and restarts the app.
+
+```dart
+final backup = FullBackup(
+  config: const FullBackupConfig(
+    appName: 'BestToDo',                  // Download/BestToDo/Backups
+    excluded: {'pre_update_backup'},      // below every root
+  ),
+  version: AppConfig.version,
+  build: AppConfig.buildNumber,
+  prefs: prefs,
+  platform: updatePlatform,               // the controller's
+);
+await backup.init();                       // before the app writes prefs
+final updates = UpdateController(/* … */ beforeInstall: backup.beforeUpdate);
+// Settings:     FullBackupTiles(backup: backup)
+// First frame:  backup.offerRestore(context)
+```
+
 ## Wiring an app
 
 ```yaml
@@ -116,7 +156,7 @@ updates.start(context);
 | `tagPattern` | null | own RegExp, named groups `version`, `build`, `channel` |
 | `assetPattern` | first `.apk` | which asset is the APK |
 | `requireApk` | `true` | releases without an APK are never offered; false = offered with the release page |
-| `privateRepo`, `tokenProvider` | `false`, null | token for a private repo |
+| `privateRepo`, `tokenProvider` | `false`, null | token for a private repo; a public one with a token also downloads with it (ready to turn private) |
 | `autoCheck` | always on | the user's switch |
 | `autoCheckChanges` | null | `Listenable` that fires when the switch may have changed |
 | `includePrereleases` | on | |

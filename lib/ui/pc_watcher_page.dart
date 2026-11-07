@@ -5,8 +5,9 @@ import '../models/pc_watcher_status.dart';
 import '../services/pc_watcher_service.dart';
 import 'subpage_app_bar.dart';
 
-/// Which builds the log shows.
-enum _LogFilter { all, published, failed, skipped }
+/// Which builds the log shows. [built] (the default) is every run that
+/// actually built something — all but the "already published" no-ops.
+enum _LogFilter { built, published, failed, skipped, all }
 
 /// Tools → PC Watcher: what the laptop builder did — every build with its
 /// time, duration, result and APK size, failures with their error, and what
@@ -33,8 +34,11 @@ class _PcWatcherPageState extends State<PcWatcherPage> {
   String? _token;
   PcWatcherSnapshot? _snapshot;
   String? _error;
-  _LogFilter _filter = _LogFilter.all;
+  _LogFilter _filter = _LogFilter.built;
   String? _app;
+
+  /// The log's filter chips start folded away.
+  bool _filtersOpen = false;
 
   @override
   void initState() {
@@ -145,11 +149,10 @@ class _PcWatcherPageState extends State<PcWatcherPage> {
               child: _ErrorBanner(message: _error!, onRetry: _refresh),
             ),
           _MachineCard(snapshot: snapshot, now: _now()),
-          _StatsCard(status: status, now: _now()),
           _PendingSection(
               status: status, jobs: snapshot.runnerJobs, now: _now()),
-          _sectionHeader(context, 'Build log'),
-          _filterChips(status),
+          _buildLogHeader(context),
+          if (_filtersOpen) _filterChips(status),
           if (builds.isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -157,6 +160,16 @@ class _PcWatcherPageState extends State<PcWatcherPage> {
             ),
           for (final build in builds.take(200))
             _BuildTile(entry: build, now: _now()),
+          const Divider(height: 24),
+          ListTile(
+            leading: const Icon(Icons.insights),
+            title: const Text('Stats'),
+            subtitle: const Text('Last 7 days: published, failed, build times'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => _PcWatcherStatsPage(status: status, now: _now()),
+            )),
+          ),
         ],
       ),
     );
@@ -166,6 +179,8 @@ class _PcWatcherPageState extends State<PcWatcherPage> {
     return status.builds.where((b) {
       if (_app != null && b.app != _app) return false;
       switch (_filter) {
+        case _LogFilter.built:
+          return b.result != PcBuildResult.unchanged;
         case _LogFilter.all:
           return true;
         case _LogFilter.published:
@@ -178,13 +193,44 @@ class _PcWatcherPageState extends State<PcWatcherPage> {
     }).toList();
   }
 
+  static const _filterLabels = {
+    _LogFilter.built: 'Built',
+    _LogFilter.published: 'Published',
+    _LogFilter.failed: 'Failed',
+    _LogFilter.skipped: 'Already published',
+    _LogFilter.all: 'All',
+  };
+
+  /// "Build log" with the fold-out Filters toggle; while folded, a short
+  /// note says what the list is narrowed to.
+  Widget _buildLogHeader(BuildContext context) {
+    final active = [
+      if (_filter != _LogFilter.built) _filterLabels[_filter]!,
+      if (_app != null) _app!,
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 4, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('Build log',
+                style: Theme.of(context).textTheme.titleMedium),
+          ),
+          TextButton.icon(
+            key: const Key('pc-watcher-filters-toggle'),
+            onPressed: () => setState(() => _filtersOpen = !_filtersOpen),
+            icon: Icon(_filtersOpen ? Icons.expand_less : Icons.filter_list),
+            label: Text(active.isEmpty
+                ? 'Filters'
+                : 'Filters: ${active.join(', ')}'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _filterChips(PcWatcherStatus status) {
-    const labels = {
-      _LogFilter.all: 'All',
-      _LogFilter.published: 'Published',
-      _LogFilter.failed: 'Failed',
-      _LogFilter.skipped: 'Already published',
-    };
+    const labels = _filterLabels;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Wrap(
@@ -364,6 +410,25 @@ class _MachineCard extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The stats, one tap away from the bottom of the page.
+class _PcWatcherStatsPage extends StatelessWidget {
+  final PcWatcherStatus status;
+  final DateTime now;
+
+  const _PcWatcherStatsPage({required this.status, required this.now});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: buildSubpageAppBar(context, title: 'PC Watcher stats'),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [_StatsCard(status: status, now: now)],
       ),
     );
   }

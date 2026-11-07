@@ -1,6 +1,7 @@
 import 'package:home_widget/home_widget.dart';
 
 import '../models/alarm.dart';
+import 'wear_sync_service.dart';
 
 /// Bridges the alarm list to the Android home-screen widget. The widget can
 /// show a handful of alarms, toggle them on/off and open the editor, so we push
@@ -54,5 +55,7 @@ class AlarmWidgetService {
         androidName: androidWidgetName,
       );
     } catch (_) {}
+    // The Wear OS companion's read-only alarm list.
+    WearSyncService.publishAlarms(alarms);
   }
 }

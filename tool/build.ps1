@@ -490,6 +490,85 @@ function Get-KeyProperties {
   }
 }
 
+# Wear OS companion (wear/, see wear/README.md): built after the phone
+# release, never able to change or fail it. Its own Gradle build (not part
+# of android/), signed with the same android/key.properties (the Data Layer
+# only pairs same-id, same-signature apps). The APK goes to build/wear/ (not
+# committed, not in github_releases/); with PUBLISH=1 it is a separate
+# GitHub release tagged wear-<phone tag>, never "Latest". The phone updater
+# only takes tags "v<digit>…" (mfficiency_updates matchesTagPrefix with
+# prefix "v") and Find-ReleaseWithSameCode only matches ^v\d…, so wear-…
+# releases are invisible to both. WEAR=0 skips it.
+function Invoke-WearRelease {
+  param(
+    [string]$Channel,
+    [string]$Version,
+    [string]$Number,
+    [string]$Sha,
+    [bool]$Publish
+  )
+  $suffix = if ($Channel -eq "main") { "" } else { "-$Channel" }
+  $phoneTag = "v$Version-$Number$suffix"
+  $wearTag = "wear-$phoneTag"
+  try {
+    if (-not (Test-Path -LiteralPath "wear/gradlew.bat")) { throw "wear/gradlew.bat not found" }
+    # The Android SDK the phone build used (Flutter writes android/local.properties).
+    $sdkLine = $null
+    if (Test-Path -LiteralPath "android/local.properties") {
+      $sdkLine = Get-Content -LiteralPath "android/local.properties" |
+        Where-Object { $_ -match '^\s*sdk\.dir\s*=' } | Select-Object -First 1
+    }
+    if ($sdkLine) {
+      Set-Content -LiteralPath "wear/local.properties" -Value $sdkLine -Encoding ASCII
+    } elseif (-not $env:ANDROID_HOME -and -not $env:ANDROID_SDK_ROOT) {
+      throw "no sdk.dir in android/local.properties and no ANDROID_HOME"
+    }
+    if (-not $env:JAVA_HOME) {
+      $jbr = "C:\Program Files\Android\Android Studio\jbr"
+      if (Test-Path -LiteralPath $jbr) { $env:JAVA_HOME = $jbr }
+    }
+    $savedRequire = $env:REQUIRE_RELEASE_KEY
+    $env:REQUIRE_RELEASE_KEY = "1"
+    $wearApk = "wear/app/build/outputs/apk/release/app-release.apk"
+    if (Test-Path -LiteralPath $wearApk) { Remove-Item -LiteralPath $wearApk -Force }
+    Write-Host "==> wear: assembleRelease (build $Number, $Version)"
+    try {
+      Invoke-Checked ".\wear\gradlew.bat" @("-p", "wear", "assembleRelease",
+        "-PbuildNumber=$Number", "-PversionName=$Version", "--no-daemon")
+    } finally {
+      $env:REQUIRE_RELEASE_KEY = $savedRequire
+    }
+    if (-not (Test-Path -LiteralPath $wearApk)) { throw "build produced no $wearApk" }
+    New-Item -ItemType Directory -Force -Path "build/wear" | Out-Null
+    $assetName = "BestToDo-Watch-$Version-$Number$suffix.apk"
+    $out = Join-Path "build/wear" $assetName
+    Copy-Item -LiteralPath $wearApk -Destination $out -Force
+    Write-Host "    built $out"
+    if (-not $Publish) {
+      Write-Host "WEAR_BUILD_RESULT app=BestToDo Watch version=$Version+$Number channel=$Channel apk=$out published=no"
+      return
+    }
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "gh CLI not found: watch APK not published" }
+    $repoUrl = "https://github.com/Mfficiency/best_todo_2"
+    $notes = "Wear OS companion for BestToDo [$phoneTag]($repoUrl/releases/tag/$phoneTag) " +
+      "(same version and signature; install both). First install on the watch with wireless ADB: " +
+      "``adb -s <ip>:<port> install -r $assetName``; afterwards the watch updates itself (wear/README.md, Updates)."
+    $title = if ($Channel -eq "main") { "BestToDo Watch $Version+$Number" } else { "BestToDo Watch $Version+$Number ($Channel)" }
+    if ((Test-Native "gh" @("release", "view", $wearTag, "--repo", "Mfficiency/best_todo_2")) -eq 0) {
+      Invoke-Checked "gh" @("release", "upload", $wearTag, $out, "--clobber", "--repo", "Mfficiency/best_todo_2")
+    } else {
+      $ghArgs = @("release", "create", $wearTag, $out, "--repo", "Mfficiency/best_todo_2",
+        "--target", $Sha, "--title", $title, "--notes", $notes, "--latest=false")
+      if ($Channel -ne "main") { $ghArgs += "--prerelease" }
+      Invoke-Checked "gh" $ghArgs
+    }
+    Write-Host "WEAR_BUILD_RESULT app=BestToDo Watch version=$Version+$Number channel=$Channel tag=$wearTag published=yes"
+  } catch {
+    Write-Warning "Watch APK not built: $_"
+    Write-Host "WEAR_BUILD_RESULT app=BestToDo Watch version=$Version+$Number channel=$Channel failed"
+  }
+}
+
 function Invoke-ChannelRelease {
   $channel = if ([string]::IsNullOrWhiteSpace($env:BUILD_CHANNEL)) { "main" } else { $env:BUILD_CHANNEL.Trim().ToLower() }
   if (@("main", "staging", "dev") -notcontains $channel) {
@@ -629,6 +708,19 @@ function Invoke-ChannelRelease {
         Write-Warning "$($b.App.Name): $_"
         $failed += $b.App.Name
       }
+    }
+  }
+
+  # The watch app, only for a phone build that went through (and, with
+  # PUBLISH=1, was released): see Invoke-WearRelease. Never fails the run.
+  if ("$env:WEAR" -ne "0") {
+    foreach ($b in $built) {
+      if ($failed -contains $b.App.Name) { continue }
+      $line = Select-String -Path $b.App.VersionFile -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)' |
+        Select-Object -First 1
+      $wearVersion = $line.Matches[0].Groups[1].Value
+      $wearNumber = if ($buildNumber -ne "") { $buildNumber } else { $line.Matches[0].Groups[2].Value }
+      Invoke-WearRelease -Channel $channel -Version $wearVersion -Number $wearNumber -Sha $sha -Publish $publish
     }
   }
 

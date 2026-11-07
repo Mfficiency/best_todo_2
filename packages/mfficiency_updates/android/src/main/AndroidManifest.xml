@@ -3,6 +3,12 @@
          for the app once. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Full backups to Downloads on Android 9 and older (10+ uses
+         MediaStore, no permission). -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <!-- Finds Android's installer app (Android 11+ package visibility). -->
     <queries>
         <intent>

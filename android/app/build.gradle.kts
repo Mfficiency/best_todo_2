@@ -209,6 +209,9 @@ dependencies {
     // plugin's; it needs no FileProvider.)
     implementation("androidx.core:core:1.13.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Wear OS companion sync (WearSync.kt / WearCommandService.kt, wear/README.md):
+    // the Data Layer. Without Play services its calls just fail (caught).
+    implementation("com.google.android.gms:play-services-wearable:18.2.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.10.3")
     testImplementation("androidx.test:core:1.5.0")

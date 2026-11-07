@@ -132,6 +132,7 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         CompassSensor.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        registerWearChannel(flutterEngine)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "besttodo/digital_wellbeing",
@@ -262,6 +263,37 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
         }
+    }
+
+    // Wear OS companion (WearSync.kt, lib/services/wear_sync_service.dart):
+    // Dart publishes the watch's lists and drains the watch's queued
+    // commands; WearCommandService pokes "wearCommandsPending" through this
+    // channel while the engine runs.
+    private fun registerWearChannel(flutterEngine: FlutterEngine) {
+        val channel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "besttodo/wear",
+        )
+        channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "publish" -> {
+                    val path = call.argument<String>("path")
+                    val json = call.argument<String>("json")
+                    if (path != null && json != null && path.startsWith("/todo/")) {
+                        WearSync.publish(applicationContext, path, json)
+                    }
+                    result.success(null)
+                }
+                "takeCommands" -> result.success(WearSync.take(applicationContext))
+                else -> result.notImplemented()
+            }
+        }
+        WearSync.channel = channel
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        WearSync.channel = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     private fun openHealthDataSources(): Boolean {
