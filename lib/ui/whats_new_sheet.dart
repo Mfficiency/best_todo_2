@@ -109,7 +109,7 @@ class WhatsNew {
         return const [];
       }
       final markdown = await (loadChangelog ??
-          () => rootBundle.loadString('CHANGELOG.md'))();
+          () => rootBundle.loadString(Config.changelogAsset))();
       return releasesSince(parseChangelogReleases(markdown), previous, current)
           .where((r) => r.entries.isNotEmpty)
           .toList();

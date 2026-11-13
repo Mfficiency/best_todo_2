@@ -464,6 +464,36 @@ function Find-ReleaseWithSameCode {
   }
 }
 
+# BestToDo Lite (SPEC.md §11): its version from lite/version.yaml.
+function Get-LiteVersion {
+  $line = Select-String -Path "lite/version.yaml" -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)' |
+    Select-Object -First 1
+  if (-not $line) { throw "lite/version.yaml has no x.y.z version" }
+  return $line.Matches[0].Groups[1].Value
+}
+
+# Lite has its own versions: a Lite release goes out once per version in
+# lite/version.yaml (bumped with a CHANGELOG_LITE.md entry), on whichever
+# channel builds it first, never again for the same version. The tag of an
+# existing release of $Version (lite-v<x.y.z>-<build>[-channel]), or $null.
+function Find-LiteRelease {
+  param([string]$Version)
+  if ("$env:FORCE_RELEASE" -eq '1') { return $null }
+  $saved = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $lines = @(& git ls-remote --tags origin "refs/tags/lite-v$Version-*" 2> $null)
+    if ($LASTEXITCODE -ne 0) { throw "git ls-remote --tags origin failed ($LASTEXITCODE)" }
+  } finally {
+    $ErrorActionPreference = $saved
+  }
+  foreach ($line in $lines) {
+    $parts = $line -split "`t"
+    if ($parts.Count -eq 2 -and $parts[1] -match '^refs/tags/(lite-v[^\^]+)') { return $Matches[1] }
+  }
+  return $null
+}
+
 function Get-KeyProperties {
   $path = "android/key.properties"
   if (-not (Test-Path -LiteralPath $path)) {
@@ -599,6 +629,14 @@ function Invoke-ChannelRelease {
   $apps = @(
     @{ Flavor = "todo"; Name = "BestToDo"; Asset = "BestToDo"; VersionFile = "pubspec.yaml"; Args = @("--flavor", "todo") + $todoSizeArgs }
   )
+  # BestToDo Lite (SPEC.md §11): the task list for old phones (Android 7+),
+  # own version (lite/version.yaml), released once per version. 32- and
+  # 64-bit ARM, since old phones may run either. LITE=0 skips it.
+  if ("$env:LITE" -ne "0") {
+    $liteVersion = Get-LiteVersion
+    $apps += @{ Flavor = "lite"; Name = "BestToDo Lite"; Asset = "BestToDoLite"; VersionFile = "lite/version.yaml"; LiteVersion = $liteVersion
+      Args = @("--flavor", "lite", "--build-name=$liteVersion", "--target-platform", "android-arm,android-arm64", "--split-debug-info=build/symbols/lite") }
+  }
   $numberArgs = @()
   if ($buildNumber -ne "") { $numberArgs = @("--build-number", $buildNumber) }
 
@@ -615,6 +653,15 @@ function Invoke-ChannelRelease {
       }
       if ($status -ne 2) {
         throw "could not check for an existing $($app.Name) release (exit $status)"
+      }
+      if ($app.Flavor -eq "lite") {
+        $released = Find-LiteRelease $app.LiteVersion
+        if ($released) {
+          Write-Host "    $($app.Name): version $($app.LiteVersion) is released already ($released) -- skipping (bump lite/version.yaml for a new one)"
+          continue
+        }
+        $todo += $app
+        continue
       }
       # The same code is released already (another branch, or an earlier
       # push): don't offer it as an update again.
@@ -716,6 +763,8 @@ function Invoke-ChannelRelease {
   if ("$env:WEAR" -ne "0") {
     foreach ($b in $built) {
       if ($failed -contains $b.App.Name) { continue }
+      # The watch app belongs to BestToDo, not to Lite.
+      if ($b.App.Flavor -ne "todo") { continue }
       $line = Select-String -Path $b.App.VersionFile -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)' |
         Select-Object -First 1
       $wearVersion = $line.Matches[0].Groups[1].Value

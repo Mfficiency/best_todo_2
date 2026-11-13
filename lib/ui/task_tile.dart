@@ -685,13 +685,14 @@ class _TaskTileState extends State<TaskTile>
             onPressed: _startDeleteOptions,
           ),
         ],
-        if (_expanded)
+        // Lite (Config.isLite) has no notifications and no Claude tools.
+        if (_expanded && !Config.isLite)
           IconButton(
             icon: const Icon(Icons.notifications_none),
             tooltip: 'Notify',
             onPressed: _sendTaskNotification,
           ),
-        if (_expanded)
+        if (_expanded && !Config.isLite)
           IconButton(
             icon: _sendingToClaude
                 ? const SizedBox(

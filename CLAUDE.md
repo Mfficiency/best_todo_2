@@ -54,6 +54,13 @@ file is the short operational guide.
   (computed by the builder, already skipping APK commits; used as is). Local test build without publishing: set `BUILD_CHANNEL=dev`,
   `BUILD_NUMBER=12345`, leave `PUBLISH` unset, run the same command. GitHub CI only builds
   (artifacts) — it no longer publishes or commits builds.
+- **BestToDo Lite** (SPEC.md §11 "BestToDo Lite"): flavor `lite` (own app id
+  `com.mfficiency.best_todo_lite`, minSdk 24 / Android 7, task list only, same Todoist sync),
+  gated by `Config.isLite`. Own version `lite/version.yaml` + `CHANGELOG_LITE.md` (newest entry
+  must match); `build.ps1 release` publishes a `lite-v…` release only for a Lite version not
+  released yet — bump both to ship changes to Lite. Local build:
+  `flutter build apk --release --flavor lite --build-name=<lite version>`. A new feature that
+  adds a drawer entry, settings section, permission or startup step must stay out of Lite.
 - Release APK: `flutter build apk --release --flavor todo` (signed with the committed debug
   keystore unless `android/key.properties` exists). `android/app/build.gradle.kts` defines one
   flavor, `todo` (`tool/build.sh` defaults to it when `--flavor` is omitted; the `music`

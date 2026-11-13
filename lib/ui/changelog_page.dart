@@ -200,7 +200,7 @@ String changelogVersionLabel(String version) {
 class ChangelogPage extends StatefulWidget {
   const ChangelogPage({
     Key? key,
-    this.assetPath = 'CHANGELOG.md',
+    this.assetPath,
     this.showStoryPoster = true,
     this.updates,
   }) : super(key: key);
@@ -210,8 +210,9 @@ class ChangelogPage extends StatefulWidget {
   /// passes one. None: no status card, pulling down does nothing.
   final UpdateController? updates;
 
-  /// Bundled asset to render (`CHANGELOG.md` by default).
-  final String assetPath;
+  /// Bundled asset to render; null = the app's own
+  /// ([Config.changelogAsset]: `CHANGELOG.md`, Lite's `CHANGELOG_LITE.md`).
+  final String? assetPath;
 
   /// Whether the "development story" poster toggle
   /// ([changelogMilestones]) is offered.
@@ -251,7 +252,7 @@ class _ChangelogPageState extends State<ChangelogPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // DefaultAssetBundle falls back to rootBundle in the app; tests can swap it.
-    _changelog ??= DefaultAssetBundle.of(context).loadString(widget.assetPath);
+    _changelog ??= DefaultAssetBundle.of(context).loadString(widget.assetPath ?? Config.changelogAsset);
   }
 
   Future<void> _loadVersion() async {

@@ -22,12 +22,21 @@ class AboutPage extends StatelessWidget {
                 future: Config.ensureVersionLoaded(),
                 builder: (context, snapshot) {
                   return Text(
-                    'BestToDo v${Config.versionWithChannel}\nRunning in $mode mode',
+                    '${Config.appName} v${Config.versionWithChannel}\nRunning in $mode mode',
                     textAlign: TextAlign.center,
                   );
                 },
               ),
               const SizedBox(height: 24),
+              if (Config.isLite)
+                const Text(
+                  'BestToDo Lite is the plain BestToDo task list for older '
+                  'phones (Android 7 and up): your tasks, synced with '
+                  'Todoist, and nothing else. No reminders, alarms or tools.\n\n'
+                  'BestToDo Lite is a product of Mfficiency.',
+                  textAlign: TextAlign.left,
+                )
+              else
               const Text(
                 'BestToDo is a lightweight, privacy-focused task manager designed to help you stay productive without the clutter.\n'
                 'It emphasizes:\n\n'
@@ -39,21 +48,24 @@ class AboutPage extends StatelessWidget {
                 'BestToDo is a product of Mfficiency, created to make everyday productivity tools faster, leaner, and user-controlled.',
                 textAlign: TextAlign.left,
               ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  MyApp.of(context)?.restartIntro();
-                },
-                icon: const Icon(Icons.replay),
-                label: const Text('Replay Introduction'),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Shows the welcome slides again, ending with the simple/full '
-                'mode choice.',
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
+              // Lite has no intro (its last page is the mode question).
+              if (!Config.isLite) ...[
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    MyApp.of(context)?.restartIntro();
+                  },
+                  icon: const Icon(Icons.replay),
+                  label: const Text('Replay Introduction'),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Shows the welcome slides again, ending with the simple/full '
+                  'mode choice.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+              ],
               const SizedBox(height: 24),
               const UpdateSection(),
               // Last: the other Mfficiency apps, to install from here.

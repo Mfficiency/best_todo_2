@@ -3273,8 +3273,10 @@ class _HomePageState extends State<HomePage>
         });
         _saveTasks();
       },
-      onStartTimer:
-          widget.tagFilter == null ? () => _startTaskTimer(task) : null,
+      // Lite: no egg timer and no reminders, so no double-tap menu either.
+      onStartTimer: widget.tagFilter == null && !Config.isLite
+          ? () => _startTaskTimer(task)
+          : null,
       onMove: (dest) => _moveTask(pageIndex, indexInTab, dest),
       onMoveToWeekday: (weekday) =>
           _moveTaskToWeekday(pageIndex, indexInTab, weekday),
@@ -3481,7 +3483,7 @@ class _HomePageState extends State<HomePage>
                 padding: const EdgeInsets.all(16), // adjust as you like
                 color: Theme.of(context).colorScheme.primary,
                 child: Text(
-                  '${widget.toolTitle ?? 'BestToDo'} v${Config.version}',
+                  '${widget.toolTitle ?? Config.appName} v${Config.version}',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onPrimary,
                     fontSize: 18,
@@ -3495,7 +3497,8 @@ class _HomePageState extends State<HomePage>
               // Only the real home page has the context toggles; the arrow
               // folds them out without leaving the drawer, a tap on the row
               // itself still goes home.
-              trailing: widget.tagFilter == null
+              // Lite has no MLR/Lemmon/Agent Desk contexts to switch.
+              trailing: widget.tagFilter == null && !Config.isLite
                   ? IconButton(
                       tooltip: _homeTogglesOpen
                           ? 'Hide home filters'
@@ -3512,7 +3515,7 @@ class _HomePageState extends State<HomePage>
                 _goHome();
               },
             ),
-            if (widget.tagFilter == null && _homeTogglesOpen)
+            if (widget.tagFilter == null && _homeTogglesOpen && !Config.isLite)
               _buildHomeContextToggles(),
             ListTile(
               leading: const Icon(Icons.settings),
@@ -3522,6 +3525,7 @@ class _HomePageState extends State<HomePage>
                 _openSettingsPage();
               },
             ),
+            if (!Config.isLite)
             ListTile(
               leading: const Icon(Icons.pending_actions),
               title: const Text('Waiting for Approval'),
@@ -3718,7 +3722,7 @@ class _HomePageState extends State<HomePage>
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
-            : Text(widget.toolTitle ?? 'BestToDo'),
+            : Text(widget.toolTitle ?? Config.appName),
         actions: [
           if (_buildDeskToggle(context) case final toggle?) toggle,
           ValueListenableBuilder<int>(

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.4] - 2026-11-13
+- New: BestToDo Lite, a separate app with just the task list for older phones (Android 7 and up). Same Todoist sync, Settings, Changelog, About and automatic updates, no reminders, alarms, widgets or tools. It has its own versions and its own changelog
+
 ## [0.4.3] - 2026-11-07
 - Agent Desk rebuilt for the PC: it now lives in your Todoist. Every question is a Todoist task labelled agentdesk, with its big description and attachments, so the same desk is on every device. New three-part screen: the queue, the open item with its text, files and comments, and the projects. It sits next to your task list: switch with the Agent Desk | Home button or Ctrl+D, the menu stays. Installed on a PC, it opens on the desk by itself at every logon
 

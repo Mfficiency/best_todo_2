@@ -93,7 +93,14 @@ class _SettingsPageState extends State<SettingsPage> {
           if (_isSectionVisible(i)) i,
       ];
 
+  /// Sections BestToDo Lite ([Config.isLite]) never shows: the mode
+  /// switch (always simple), notifications, the tools' own settings and the
+  /// home-screen widget. What stays: Appearance, Filtering rules, Tasks,
+  /// Todoist sync, Sync & export, Releases, Debugging, Updates, Backup.
+  static const Set<int> _liteHiddenSections = {1, 3, 5, 6, 7, 8, 11, 12, 13};
+
   bool _isSectionVisible(int index) {
+    if (Config.isLite && _liteHiddenSections.contains(index)) return false;
     switch (index) {
       case 5:
         return Config.isFeatureEnabled('streak');
@@ -849,6 +856,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required String title,
     required List<Widget> children,
   }) {
+    if (!_isSectionVisible(index)) return const SizedBox.shrink();
     final collapsed = _collapsedSections.contains(index);
     return Container(
       key: _sectionKeys[index],
@@ -2734,6 +2742,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// section stays (the feature switches themselves are hidden in simple
   /// mode, where they have no effect).
   bool _isEntryVisible(_SettingsSearchEntry entry) {
+    if (!_isSectionVisible(entry.sectionIndex)) return false;
     if (entry.sectionIndex == 1 &&
         Config.simpleMode &&
         Config.featureLabels.contains(entry.title)) {

@@ -1,0 +1,6 @@
+# BestToDo Lite's own version (SPEC.md §11 "BestToDo Lite"), separate from
+# pubspec.yaml's BestToDo version. Bump it together with a new entry at the
+# top of CHANGELOG_LITE.md: `tool\build.ps1 release` publishes a Lite release
+# (tag lite-v<x.y.z>-<build>) only for a version that has none yet.
+# The +build part is only a fallback; release builds use BUILD_NUMBER.
+version: 1.0.0+1

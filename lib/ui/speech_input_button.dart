@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../services/speech_recognition_service.dart';
 
 /// Mic button that sits beside a text field: first tap starts local
@@ -64,6 +65,8 @@ class _SpeechInputButtonState extends State<SpeechInputButton> {
 
   @override
   Widget build(BuildContext context) {
+    // BestToDo Lite has no microphone permission (src/lite manifest).
+    if (Config.isLite) return const SizedBox.shrink();
     return IconButton(
       tooltip: _listening ? 'Stop recording' : 'Speak instead of typing',
       icon: Icon(

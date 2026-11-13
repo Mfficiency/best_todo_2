@@ -19,7 +19,12 @@ export 'package:mfficiency_updates/mfficiency_updates.dart';
 /// tags in this repo's releases are never offered here.)
 enum UpdatesApp {
   /// BestToDo (`lib/main.dart`): tags `v<x.y.z>-<build>[-dev|-staging]`.
-  todo('BestToDo', 'v');
+  todo('BestToDo', 'v'),
+
+  /// BestToDo Lite (`--flavor lite`, [Config.isLite]): its own app and
+  /// versions, tags `lite-v<x.y.z>-<build>[-dev|-staging]`. Neither app
+  /// ever sees the other's releases (the package matches the whole prefix).
+  lite('BestToDo Lite', 'lite-v');
 
   const UpdatesApp(this.appName, this.tagPrefix);
   final String appName;
@@ -61,7 +66,7 @@ Future<void> updateCheckInBackground() => UpdateBackground.run(() async {
       await Config.ensureVersionLoaded();
       final prefs = await SharedPreferences.getInstance();
       final c = AppUpdates.controllerFor(
-        UpdatesApp.todo,
+        AppUpdates.app,
         version: Config.version,
         build: int.tryParse(Config.buildNumber) ?? 0,
         store: SharedPreferencesUpdateStore(prefs),
@@ -74,6 +79,10 @@ class AppUpdates {
   AppUpdates._();
 
   static const String githubRepo = 'Mfficiency/best_todo_2';
+
+  /// The app this build is: [UpdatesApp.lite] for BestToDo Lite.
+  static UpdatesApp get app =>
+      Config.isLite ? UpdatesApp.lite : UpdatesApp.todo;
 
   // ── Optional GitHub token ────────────────────────────────────────────
 
@@ -135,10 +144,12 @@ class AppUpdates {
   /// once-per-install copy of the data files) is left out as a duplicate.
   /// Everything else BestToDo keeps is a file in its own folders or a
   /// SharedPreferences key, so there are no `extras`.
-  static const FullBackupConfig backupConfig = FullBackupConfig(
-    appName: 'BestToDo',
-    excluded: {PreUpdateBackup.backupDirName},
-  );
+  /// Lite keeps its own folder (`Download/BestToDoLite/Backups`), so the
+  /// two apps never offer each other's backups.
+  static FullBackupConfig get backupConfig => FullBackupConfig(
+        appName: Config.isLite ? 'BestToDoLite' : 'BestToDo',
+        excluded: const {PreUpdateBackup.backupDirName},
+      );
 
   /// BestToDo: false while the intro, the mode picker or another
   /// first-start chooser is open (`main.dart`), so Android's install
@@ -299,7 +310,13 @@ class AppUpdates {
   // ── About › Other apps ───────────────────────────────────────────────
 
   /// BestToDo's applicationId, left out of the other apps' list.
-  static const String appId = 'com.mfficiency.best_todo_2';
+  static const String todoAppId = 'com.mfficiency.best_todo_2';
+
+  /// BestToDo Lite's applicationId (`--flavor lite`).
+  static const String liteAppId = 'com.mfficiency.best_todo_lite';
+
+  /// This build's applicationId.
+  static String get appId => Config.isLite ? liteAppId : todoAppId;
 
   static OtherAppsController? _otherApps;
 

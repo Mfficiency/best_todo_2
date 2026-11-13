@@ -17,7 +17,8 @@
 //   dart run tool/publish_apk.dart --channel dev --build-number N --exists
 //       (exit 0 when that release already exists, 2 when it doesn't)
 //
-// Defaults: --app todo (the only app; the flag is kept for existing callers),
+// Defaults: --app todo (`--app lite` publishes BestToDo Lite: lite-v… tags,
+// lite/version.yaml, CHANGELOG_LITE.md, never "Latest"),
 // --channel $BUILD_CHANNEL (else main), --build-number $BUILD_NUMBER (else the
 // build part of pubspec.yaml).
 //
@@ -49,7 +50,8 @@ const String uploadsBase = 'https://uploads.github.com';
 
 const List<String> channels = ['main', 'staging', 'dev'];
 
-/// The app published from this repo (BestToDo — [todoApp]).
+/// An app published from this repo: BestToDo ([todoApp]) and BestToDo Lite
+/// ([liteApp]).
 class AppSpec {
   const AppSpec({
     required this.id,
@@ -58,10 +60,20 @@ class AppSpec {
     required this.assetPrefix,
     required this.versionFile,
     required this.changelogFile,
+    required this.apkPrefix,
+    this.canBeLatest = true,
   });
 
-  /// `todo` — the Gradle flavor.
+  /// `todo` / `lite` — the Gradle flavor.
   final String id;
+
+  /// The renamed APK Gradle writes: `<apkPrefix>_<x.y.z+build>.apk`.
+  final String apkPrefix;
+
+  /// Whether a main-channel release of this app becomes the repo's
+  /// "Latest" release (BestToDo's; never Lite's, very old BestToDo installs
+  /// read releases/latest).
+  final bool canBeLatest;
   final String displayName;
   final String tagPrefix;
   final String assetPrefix;
@@ -76,10 +88,25 @@ const AppSpec todoApp = AppSpec(
   assetPrefix: 'BestToDo',
   versionFile: 'pubspec.yaml',
   changelogFile: 'CHANGELOG.md',
+  apkPrefix: 'best_todo',
+);
+
+/// BestToDo Lite (`--flavor lite`, SPEC.md §11): its own version
+/// (`lite/version.yaml`) and changelog, tags `lite-v<x.y.z>-<build>…`.
+const AppSpec liteApp = AppSpec(
+  id: 'lite',
+  displayName: 'BestToDo Lite',
+  tagPrefix: 'lite-v',
+  assetPrefix: 'BestToDoLite',
+  versionFile: 'lite/version.yaml',
+  changelogFile: 'CHANGELOG_LITE.md',
+  apkPrefix: 'best_todo_lite',
+  canBeLatest: false,
 );
 
 AppSpec? appFor(String id) => switch (id) {
       'todo' => todoApp,
+      'lite' => liteApp,
       _ => null,
     };
 
@@ -182,7 +209,7 @@ String buildFooter({
 
 /// Where a freshly built release APK may sit, most specific first.
 List<String> apkCandidatePaths(String version, {AppSpec app = todoApp}) => [
-      'build/app/outputs/flutter-apk/best_${app.id}_$version.apk',
+      'build/app/outputs/flutter-apk/${app.apkPrefix}_$version.apk',
       'build/app/outputs/flutter-apk/app-${app.id}-release.apk',
       if (app.id == 'todo') 'build/app/outputs/flutter-apk/app-release.apk',
     ];
@@ -196,7 +223,7 @@ Future<void> main(List<String> args) async {
   int? durationSeconds;
   var dryRun = false;
   var existsOnly = false;
-  const usage = 'Usage: dart run tool/publish_apk.dart [--app todo] '
+  const usage = 'Usage: dart run tool/publish_apk.dart [--app todo|lite] '
       '[--channel main|staging|dev] [--build-number N] [--apk <path>] '
       '[--duration <secs>] [--target <commit>] [--exists] [--dry-run]';
   const valued = {
@@ -248,8 +275,8 @@ Future<void> main(List<String> args) async {
 
   final app = appFor(appId);
   if (app == null) {
-    stderr.writeln('--app must be todo (got "$appId"; Best Music moved to '
-        'Mfficiency/BestMusic)');
+    stderr.writeln('--app must be todo or lite (got "$appId"; Best Music '
+        'moved to Mfficiency/BestMusic)');
     exitCode = 64;
     return;
   }
@@ -378,7 +405,7 @@ Future<void> main(List<String> args) async {
         name: name,
         body: body,
         prerelease: channel != 'main',
-        makeLatest: channel == 'main',
+        makeLatest: channel == 'main' && app.canBeLatest,
         commit: commit);
     final releaseId = release['id'];
     // Replace a leftover asset of the same name, so re-publishing a rebuilt

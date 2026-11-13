@@ -1,0 +1,77 @@
+<!-- BestToDo Lite (Gradle flavor `lite`, SPEC.md §11 "BestToDo Lite"): merged over
+     src/main/AndroidManifest.xml for this flavor only. The task list for old
+     phones (minSdk 24, Android 7.0): everything for notifications, alarms,
+     SMS, Health Connect, home-screen widgets and the watch is taken out, so
+     Lite asks for none of it and never runs any of it in the background.
+     What stays: the app, the share sheet entry (quick add), the internet and
+     the updater plugin's own install permission/receiver. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The health plugin and Health Connect's client declare minSdk 26.
+         Lite never calls them (no Fitness Activity); this only lets the
+         manifest merger accept minSdk 24. -->
+    <uses-sdk tools:overrideLibrary="cachet.plugins.health,androidx.health.connect.client" />
+
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove" />
+    <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" tools:node="remove" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" tools:node="remove" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" tools:node="remove" />
+    <uses-permission android:name="android.permission.VIBRATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" tools:node="remove" />
+
+    <application>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            tools:node="remove" />
+
+        <service
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
+            tools:node="remove" />
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
+            tools:node="remove" />
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.RebootBroadcastReceiver"
+            tools:node="remove" />
+
+        <receiver android:name=".SimpleWidgetProvider" tools:node="remove" />
+        <receiver android:name=".AlarmsWidgetProvider" tools:node="remove" />
+        <receiver android:name=".FoodDiaryWidgetProvider" tools:node="remove" />
+        <receiver android:name=".FoodDiaryButtonWidgetProvider" tools:node="remove" />
+        <receiver
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
+            tools:node="remove" />
+        <service
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundService"
+            tools:node="remove" />
+
+        <service android:name=".WearCommandService" tools:node="remove" />
+
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            tools:node="remove" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            tools:node="remove" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            tools:node="remove" />
+    </application>
+</manifest>

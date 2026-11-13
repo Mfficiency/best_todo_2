@@ -62,9 +62,42 @@ void main() {
           'BestToDo-0.2.101+12199-staging.apk');
     });
 
-    test('only todo is a known --app', () {
+    test('todo and lite are the known --app values', () {
       expect(publish_tool.appFor('todo'), same(publish_tool.todoApp));
+      expect(publish_tool.appFor('lite'), same(publish_tool.liteApp));
       expect(publish_tool.appFor('music'), isNull);
+    });
+
+    test('BestToDo Lite has its own tags, assets and version file', () {
+      const lite = publish_tool.liteApp;
+      expect(publish_tool.releaseTagFor('1.0.0+3600000', app: lite),
+          'lite-v1.0.0-3600000');
+      expect(
+          publish_tool.releaseTagFor('1.0.0+3600000',
+              app: lite, channel: 'dev'),
+          'lite-v1.0.0-3600000-dev');
+      expect(publish_tool.releaseNameFor('1.0.0+5', app: lite),
+          'BestToDo Lite 1.0.0+5');
+      expect(publish_tool.assetNameFor('1.0.0+5', app: lite),
+          'BestToDoLite-1.0.0+5.apk');
+      expect(lite.versionFile, 'lite/version.yaml');
+      expect(lite.changelogFile, 'CHANGELOG_LITE.md');
+      expect(lite.canBeLatest, isFalse,
+          reason: 'only BestToDo is ever the "Latest" release');
+      expect(publish_tool.apkCandidatePaths('1.0.0+5', app: lite).first,
+          'build/app/outputs/flutter-apk/best_todo_lite_1.0.0+5.apk');
+      // Each updater only ever sees its own app's releases.
+      for (final channel in publish_tool.channels) {
+        final liteTag =
+            publish_tool.releaseTagFor('1.0.0+7', app: lite, channel: channel);
+        final todoTag = publish_tool.releaseTagFor('0.4.3+7', channel: channel);
+        expect(matchesTagPrefix(liteTag, UpdatesApp.lite.tagPrefix), isTrue);
+        expect(matchesTagPrefix(liteTag, UpdatesApp.todo.tagPrefix), isFalse);
+        expect(matchesTagPrefix(todoTag, UpdatesApp.lite.tagPrefix), isFalse);
+        expect(releaseBuild(liteTag, prefix: UpdatesApp.lite.tagPrefix), 7);
+        expect(releaseVersion(liteTag, prefix: UpdatesApp.lite.tagPrefix),
+            '1.0.0');
+      }
     });
 
     test('tags round-trip through the in-app updater', () {

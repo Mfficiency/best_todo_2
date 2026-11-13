@@ -195,20 +195,26 @@ Future<void> main([List<String> args = const []]) async {
   // The folder backup's schedule moves to the full backup's (one automatic
   // backup on Android, see AppUpdates.adoptFolderBackupSchedule).
   await _initStep('backup schedule', AppUpdates.adoptFolderBackupSchedule);
-  await _initStep('notifications', NotificationService.initialize);
-  if (!kIsWeb) {
-    await _initStep('sms report scheduler', SmsReportScheduler.applyFromConfig);
-    await _initStep('f1 reminder', F1ReminderService.applyFromConfig);
+  // BestToDo Lite (Config.isLite) is the task list only: no notifications,
+  // alarms, SMS/F1 schedules or home-screen widgets are set up at all.
+  if (!Config.isLite) {
+    await _initStep('notifications', NotificationService.initialize);
+    if (!kIsWeb) {
+      await _initStep(
+          'sms report scheduler', SmsReportScheduler.applyFromConfig);
+      await _initStep('f1 reminder', F1ReminderService.applyFromConfig);
+    }
+    await _initStep('alarms', AlarmService.instance.load);
+    // Snapshot the device/permission state into the alarm log on every
+    // launch, so a missed alarm can be diagnosed from the file after the
+    // fact. Fire and forget: must not delay first frame.
+    unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'));
+    try {
+      await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
+      await HomeWidget.registerInteractivityCallback(
+          alarmWidgetBackgroundCallback);
+    } catch (_) {}
   }
-  await _initStep('alarms', AlarmService.instance.load);
-  // Snapshot the device/permission state into the alarm log on every launch,
-  // so a missed alarm can be diagnosed from the file after the fact. Fire and
-  // forget: must not delay first frame.
-  unawaited(NotificationService.runAlarmDiagnostics(trigger: 'app start'));
-  try {
-    await HomeWidget.setAppGroupId(AlarmWidgetService.appGroupId);
-    await HomeWidget.registerInteractivityCallback(alarmWidgetBackgroundCallback);
-  } catch (_) {}
   SharedPreferences? prefs;
   try {
     prefs = await SharedPreferences.getInstance();
@@ -218,7 +224,11 @@ Future<void> main([List<String> args = const []]) async {
   // The mode question closes the intro, so someone who has never answered it
   // gets the whole welcome flow rather than the chooser on its own.
   final introAlreadyShown = prefs?.getBool('intro_shown') ?? false;
-  final showIntro = Config.isDev ? false : !introAlreadyShown || !Config.modeChosen;
+  // Lite has no intro: its last page is the simple/full mode question, and
+  // Lite is always simple mode.
+  final showIntro = Config.isDev || Config.isLite
+      ? false
+      : !introAlreadyShown || !Config.modeChosen;
   // The fresh-start/import-from-Todoist question is a one-time step of its
   // own, decoupled from intro_shown so it survives being interrupted (app
   // closed mid-onboarding). An install that had already finished onboarding
@@ -233,7 +243,7 @@ Future<void> main([List<String> args = const []]) async {
   // In-app updates (the shared mfficiency_updates package, see
   // AppUpdates): reads the version and the stored update state, no network.
   // The checks start after the first frame (_startUpdates).
-  await _initStep('updates', () => AppUpdates.create(UpdatesApp.todo));
+  await _initStep('updates', () => AppUpdates.create(AppUpdates.app));
   runApp(MyApp(
     showIntro: showIntro,
     showModePicker: !showIntro && !Config.modeChosen,
@@ -340,6 +350,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // notification, or its full-screen intent firing over the lock screen),
     // present the ring page. Covers both a warm app (callback) and a cold
     // start (launch details).
+    // Lite has no alarms, notifications or widgets (see main()).
+    if (Config.isLite) {
+      if (!kIsWeb && Platform.isAndroid) {
+        ShareIntentService.instance.setOnSharedPayload(_queueSharedPayload);
+        unawaited(ShareIntentService.instance.init().catchError((_) {}));
+      }
+      return;
+    }
     NotificationService.setOnAlarmRing(_showAlarmRing);
     NotificationService.getAlarmLaunchPayload().then((payload) {
       if (payload != null) _showAlarmRing(payload);
@@ -553,7 +571,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _startUpdates();
     final updates = AppUpdates.controller;
     return MaterialApp(
-      title: 'BestToDo',
+      title: Config.appName,
       navigatorKey: appNavigatorKey,
       builder: (context, child) {
         final page = child ?? const SizedBox.shrink();

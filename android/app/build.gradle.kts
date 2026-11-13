@@ -66,15 +66,27 @@ android {
         versionName = flutter.versionName
     }
 
-    // One product flavor, `todo` (BestToDo; `--flavor todo`, which every
-    // build script and CI job passes). Best Music, the `music` flavor until
-    // 0.2.111, is its own repo now (Mfficiency/BestMusic).
+    // Two product flavors: `todo` (BestToDo; `--flavor todo`, which every
+    // build script and CI job passes) and `lite` (BestToDo Lite, SPEC.md §11:
+    // the plain task list for old phones, its own app with its own versions,
+    // `lite/version.yaml`). Best Music, the `music` flavor until 0.2.111, is
+    // its own repo now (Mfficiency/BestMusic).
     flavorDimensions += listOf("app")
     productFlavors {
         create("todo") {
             dimension = "app"
             // Launcher label (AndroidManifest android:label="${appLabel}").
             manifestPlaceholders["appLabel"] = "BestToDo"
+        }
+        create("lite") {
+            dimension = "app"
+            // Its own app next to BestToDo, never an update of it.
+            applicationId = "com.mfficiency.best_todo_lite"
+            // Android 7.0. Only the health plugin wants 26, and Lite never
+            // uses it (src/lite/AndroidManifest.xml overrides its minSdk and
+            // strips everything but the task list from the manifest).
+            minSdk = 24
+            manifestPlaceholders["appLabel"] = "BestToDo Lite"
         }
     }
 
@@ -135,7 +147,7 @@ afterEvaluate {
     // that flavor's own app-<flavor>-release.apk, never whichever APK happens
     // to sit in build/app/outputs/flutter-apk/ (it is never cleaned between
     // builds; sniffing it once re-copied a stale APK of the other app).
-    val flavorPrefixes = mapOf("todo" to "best_todo")
+    val flavorPrefixes = mapOf("todo" to "best_todo", "lite" to "best_todo_lite")
 
     fun flutterFullVersion() =
         "${(flutter.versionName ?: "0.0.0").substringBefore("+")}+${flutter.versionCode}"

@@ -3730,6 +3730,54 @@ in App Logs → Todoist — onboarding has already finished by then.
 > that moves pre-split Best Music installs to the new repo (they only read this repo); BestToDo's
 > updater only takes `v…` tags.
 
+### BestToDo Lite (BestToDo 0.4.4, Lite 1.0.0)
+
+A second app from the same code: the plain task list for old phones (built for a Galaxy S6 on
+Android 7.0), its own app and versions. Everything hangs off one switch, `Config.isLite`
+(true when the Gradle flavor is `lite` — Flutter's `appFlavor` — or `--dart-define=LITE=true`;
+tests set `Config.debugLiteOverride`).
+
+- **Android:** product flavor `lite` in `android/app/build.gradle.kts`: applicationId
+  `com.mfficiency.best_todo_lite` (installs next to BestToDo, never over it), **minSdk 24**,
+  label "BestToDo Lite", renamed APK `best_todo_lite_<x.y.z+build>.apk`.
+  `android/app/src/lite/AndroidManifest.xml` overrides the minSdk 26 of the health plugin and
+  Health Connect's client (`tools:overrideLibrary`; Lite never calls them) and removes every
+  permission, receiver and service for notifications, alarms, SMS, Health Connect, home-screen
+  widgets and the watch. What stays: the app, the share-sheet quick add, internet, the updater
+  plugin's install permission/receiver/background job. No XML comment may contain `--`
+  (the manifest merger refuses the file).
+- **Dart:** `Config.isFeatureEnabled` allows only `Config.liteFeatures` (simple mode's
+  service pages + `search`), whatever the saved switches; `Config.applyLiteDefaults()` (end of
+  `Config.load`) forces simple mode, `modeChosen`, notifications off, start page = tasks.
+  `main()` skips notifications, SMS/F1 schedules, alarms, alarm diagnostics and widget setup;
+  `MyApp` registers only the share intent. No intro (it ends with the mode question) — a new
+  install goes straight to the Start fresh / Import from Todoist choice. Hidden: Waiting for
+  Approval and the Home context toggles in the drawer, the double-tap menu (timer/reminders),
+  the task tile's Notify and Send to Claude buttons, the mic (`SpeechInputButton`), About's
+  Replay introduction, and Settings sections Mode & features, Notifications, Streak, Dice
+  timer, SMS report, Widget, Weekly Hours Planner, Wishlist build and Claude Routine
+  (`_liteHiddenSections`; hidden in the chips, the page and the settings search). Kept:
+  Appearance, Filtering rules, Tasks, Todoist sync (same Todoist sync as BestToDo), Sync &
+  export, Releases, Debugging, Updates, Backup & data, Changelog, About, Archived items, logs.
+- **Name, changelog, updates, backup:** `Config.appName` ("BestToDo Lite": drawer, app bar,
+  About, `MaterialApp.title`, problem reports), `Config.changelogAsset`
+  (`CHANGELOG_LITE.md`, bundled; Changelog page and What's new), `AppUpdates.app` =
+  `UpdatesApp.lite` (tag prefix `lite-v`; the package matches the whole prefix, so neither app
+  sees the other's releases), `AppUpdates.appId` = the Lite id, full backup folder
+  `Download/BestToDoLite/Backups`.
+- **Versions & releases:** Lite's version is `lite/version.yaml` (`version: x.y.z+n`; the build
+  part is a fallback) with `CHANGELOG_LITE.md`, whose newest entry must match it
+  (`test/home/lite_mode_test.dart`). `tool\build.ps1 release` builds Lite after BestToDo
+  (`--flavor lite --build-name=<lite version>`, android-arm + android-arm64, same
+  `BUILD_NUMBER`) **only when no `lite-v<version>-…` tag exists yet** (`Find-LiteRelease`; any
+  channel; `FORCE_RELEASE=1` overrides, `LITE=0` skips Lite). So a Lite release goes out once
+  per version: bump `lite/version.yaml` + a `CHANGELOG_LITE.md` entry to ship shared-code
+  changes to Lite. `tool/publish_apk.dart --app lite` publishes tag
+  `lite-v<x.y.z>-<build>[-dev|-staging]`, asset `BestToDoLite-<x.y.z+build>[-channel].apk`,
+  never marked "Latest". No watch release for Lite.
+- **First install on the phone:** sideload the APK once (Android 7: Settings → Security →
+  Unknown sources); after that the in-app updater takes over.
+
 - **Versioning:** `dart run tool/bump_version.dart <x.y.z[+build]> ["changelog entry"]`
   updates pubspec and prepends a dated CHANGELOG section (idempotent). Build number strictly
   increases per distributed build; passing a bare `x.y.z` carries the current build number

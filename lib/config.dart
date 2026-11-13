@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart' show appFlavor;
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -61,6 +62,36 @@ class Config {
 
   /// Drops an explicit [hideDemoItems] choice, restoring the build's default.
   static void resetHideDemoItemsForTest() => _hideDemoItemsSet = null;
+
+  /// BestToDo Lite (SPEC.md §11 "BestToDo Lite"): the plain task list for old
+  /// phones (Android 7+), its own app (`--flavor lite`, applicationId
+  /// `com.mfficiency.best_todo_lite`, own version in `lite/version.yaml`, own
+  /// `CHANGELOG_LITE.md`, releases tagged `lite-v…`). Always simple mode with
+  /// search; no notifications, alarms, widgets, tools or mode picker, but the
+  /// same Todoist sync, Settings, Changelog, About, updates and backup.
+  /// Set by the Gradle flavor (`appFlavor`) or `--dart-define=LITE=true`;
+  /// tests flip it with [debugLiteOverride].
+  static bool get isLite =>
+      debugLiteOverride ??
+      (const bool.fromEnvironment('LITE') || appFlavor == 'lite');
+
+  /// Tests only: forces [isLite] on or off (null = the build's own value).
+  static bool? debugLiteOverride;
+
+  /// The app's name as shown in the drawer, About, the backup folder and
+  /// problem reports.
+  static String get appName => isLite ? 'BestToDo Lite' : 'BestToDo';
+
+  /// The bundled changelog the Changelog page and What's new read.
+  static String get changelogAsset =>
+      isLite ? 'CHANGELOG_LITE.md' : 'CHANGELOG.md';
+
+  /// What Lite keeps besides the task list: [simpleModeFeatures] plus the
+  /// task search.
+  static const Set<String> liteFeatures = {
+    ...simpleModeFeatures,
+    'search',
+  };
 
   /// Release channel (branch) this build came from — `dev`, `staging` or
   /// `main` — compiled in by the laptop builder
@@ -346,6 +377,7 @@ class Config {
   /// feature except [simpleModeFeatures], so the per-feature switches only
   /// apply in full mode.
   static bool isFeatureEnabled(String key) {
+    if (isLite) return liteFeatures.contains(key);
     if (simpleMode) return simpleModeFeatures.contains(key);
     return featureEnabled[key] ?? true;
   }
@@ -743,9 +775,20 @@ class Config {
         applyMap(data);
       }
     } catch (_) {}
+    if (isLite) applyLiteDefaults();
     final seedVersionBefore = viewFilterRulesSeedVersion;
     seedViewFilterRuleDefaultsIfNeeded();
     if (viewFilterRulesSeedVersion != seedVersionBefore) await save();
+  }
+
+  /// Lite ([isLite]) is always simple mode (never asked), with
+  /// notifications off and the plain task list as the start page.
+  static void applyLiteDefaults() {
+    simpleMode = true;
+    modeChosen = true;
+    enableNotifications = false;
+    startTool = 'tasks';
+    startInScheduleView = false;
   }
 
   static Map<String, dynamic> toMap() {

@@ -169,6 +169,30 @@ void main() {
         ['Releases', 'Debugging', 'Updates', 'Backup & data']);
   });
 
+  testWidgets('BestToDo Lite: only the task list\'s sections', (tester) async {
+    Config.debugLiteOverride = true;
+    addTearDown(() => Config.debugLiteOverride = null);
+    await pumpSettings(tester);
+    final chips = tester
+        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+        .map((c) => (c.label as Text).data)
+        .toList();
+    expect(chips, [
+      'Appearance',
+      'Filtering rules',
+      'Tasks',
+      'Todoist sync',
+      'Sync & export',
+      'Releases',
+      'Debugging',
+      'Updates',
+      'Backup & data',
+    ]);
+    expect(find.text('Mode & features'), findsNothing);
+    expect(find.text('Notifications'), findsNothing);
+    expect(find.text('Claude Routine'), findsNothing);
+  });
+
   testWidgets('Appearance: Dark mode, Compact mode, Time format, Date format '
       'first', (tester) async {
     await pumpSettings(tester);

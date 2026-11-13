@@ -49,7 +49,7 @@ class ProblemReports {
 
   static ProblemReporter create() => ProblemReporter(
         config: ProblemReportConfig(
-          appName: 'BestToDo',
+          appName: Config.appName,
           version: Config.version,
           build: int.tryParse(Config.buildNumber) ?? 0,
           channel: Config.channel,
